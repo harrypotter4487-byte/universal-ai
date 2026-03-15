@@ -128,7 +128,7 @@ function SettingsModal({onClose}:{onClose:()=>void}){
             <button onClick={onClose} style={{background:"none",border:"none",color:"#636366",cursor:"pointer",fontSize:16,padding:"2px 6px",borderRadius:6,fontFamily:"inherit"}} onMouseEnter={e=>(e.currentTarget.style.color="#e5e5e5")} onMouseLeave={e=>(e.currentTarget.style.color="#636366")}>✕</button>
           </div>
           {tabs.map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 16px",background:tab===t.id?"#2c2c2e":"transparent",border:"none",borderRadius:tab===t.id?"8px":"0",margin:tab===t.id?"0 8px":"0",width:tab===t.id?"calc(100% - 16px)":"100%",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",textAlign:"left"}}>
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:10,width:tab===t.id?"calc(100% - 16px)":"100%",padding:"9px 16px",background:tab===t.id?"#2c2c2e":"transparent",border:"none",borderRadius:tab===t.id?"8px":"0",margin:tab===t.id?"0 8px":"0",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",textAlign:"left"}}>
               <span style={{fontSize:15}}>{t.icon}</span>
               <span style={{fontSize:"0.85rem",fontWeight:tab===t.id?500:400,color:tab===t.id?"#e5e5e5":"#8e8e93"}}>{t.label}</span>
             </button>
