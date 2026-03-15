@@ -1,263 +1,138 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(request: NextRequest) {
-  console.log("CHAT API HIT");
+const SYSTEM = `You are a highly intelligent, friendly AI assistant. Your goal is to give replies that feel natural, warm, and genuinely helpful — like a smart friend who always gives clear, well-organized answers.
 
+STRICT FORMATTING RULES:
+1. Always use relevant emojis at the start of section headings
+2. Use **bold** for the most important words/phrases
+3. Use clean bullet points with good spacing
+4. Add a blank line between each section
+5. Keep each bullet point to 1-2 lines maximum
+6. Use ## for main section headings
+7. Always end with either a helpful tip, next step, or encouraging note
+
+WRITING STYLE:
+- Conversational but intelligent
+- Never robotic or overly formal
+- Mix short and medium sentences
+- Use simple words — explain complex things simply
+- When analyzing something, be specific and actionable
+
+WHEN ANALYZING IMAGES OR FILES:
+- First give a 1-2 line summary of what you see
+- Then break into clear sections with emoji headings
+- Highlight problems with ⚠️ and solutions with ✅
+- Always give 2-3 specific actionable recommendations at the end
+
+Example of good reply format:
+## 🔍 What I Found
+A clear summary in 1-2 sentences.
+
+## ⚡ Key Points
+- **Point 1** — explanation
+- **Point 2** — explanation
+- **Point 3** — explanation
+
+## ✅ What To Do Next
+- Step one
+- Step two
+
+💡 **Pro tip:** helpful closing note`;
+
+const CANVAS_SYSTEM = `You generate canvas drawing instructions as JSON.
+When user asks to draw/diagram/canvas, respond with:
+\`\`\`canvas
+[{"id":"1","type":"rect","x":100,"y":80,"w":250,"h":60,"color":"#2563eb","fill":"#eff6ff"},{"id":"2","type":"text","x":120,"y":118,"text":"Title Here","color":"#1e3a8a","fontSize":18,"bold":true}]
+\`\`\`
+Canvas: 1100x650px white background. Use professional colors.
+Types: rect(x,y,w,h), circle(x,y,r), text(x,y,text,fontSize,bold), line(x,y,w=endX,h=endY)`;
+
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const messages = body.messages || [];
-    const message = messages[messages.length - 1]?.content || body.message || "";
-    const model = body.model || "groq";
+    const body        = await req.json();
+    const model       = body.model       || "groq";
+    const wantsCanvas = body.wantsCanvas || false;
+    const message     = body.message     || body.messages?.[body.messages.length - 1]?.content || "";
+    const images: string[] = body.images || [];
+    const systemMsg   = wantsCanvas ? CANVAS_SYSTEM : SYSTEM;
 
-    console.log("MODEL:", model);
+    const vision = (text: string, imgs: string[]) =>
+      imgs.length === 0 ? text : [
+        { type: "text", text },
+        ...imgs.map(url => ({ type: "image_url", image_url: { url, detail: "high" } })),
+      ];
 
-    // ==================== GROQ ====================
+    // ── GROQ ──
     if (model === "groq") {
-      const GROQ_KEY = process.env.GROQ_API_KEY;
-      if (!GROQ_KEY) {
-        return NextResponse.json({ reply: "Groq API key missing" });
-      }
-
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const key = process.env.GROQ_API_KEY;
+      if (!key) return NextResponse.json({ reply: "Groq API key missing" });
+      const useVision = images.length > 0;
+      const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${GROQ_KEY}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: "user", content: message }],
-          max_tokens: 2048,
+          model: useVision ? "meta-llama/llama-4-scout-17b-16e-instruct" : "llama-3.3-70b-versatile",
+          messages: [{ role: "system", content: systemMsg }, { role: "user", content: vision(message, images) }],
+          max_tokens: 4096,
         }),
       });
-
-      const data = await response.json();
-      console.log("GROQ RESPONSE:", data);
-
-      if (!response.ok) {
-        return NextResponse.json({ reply: "Groq error: " + (data?.error?.message || "Unknown error") });
-      }
-
-      return NextResponse.json({ reply: data?.choices?.[0]?.message?.content || "No response from Groq" });
+      const d = await r.json();
+      if (!r.ok) return NextResponse.json({ reply: "Groq error: " + (d?.error?.message || "Unknown") });
+      return NextResponse.json({ reply: d?.choices?.[0]?.message?.content || "No response" });
     }
 
-    // ==================== DEEPSEEK (via NVIDIA) ====================
-    if (model === "deepseek") {
-      const NVIDIA_KEY = process.env.NVIDIA_API_KEY;
-      if (!NVIDIA_KEY) {
-        return NextResponse.json({ reply: "NVIDIA API key missing" });
-      }
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-
+    // ── GEMINI ──
+    if (model === "gemini") {
+      const key = process.env.GEMINI_API_KEY;
+      if (!key) return NextResponse.json({ reply: "Gemini API key missing!" });
+      const parts: object[] = [{ text: message }];
+      images.forEach(d => {
+        const [m, b] = d.split(",");
+        parts.push({ inlineData: { mimeType: m.match(/:(.*?);/)?.[1] || "image/jpeg", data: b } });
+      });
       try {
-        const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${NVIDIA_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "deepseek-ai/deepseek-v3.2",
-            messages: [
-              { role: "system", content: "You are a helpful AI assistant." },
-              { role: "user", content: message },
-            ],
-            max_tokens: 2048,
-          }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-
-        const rawText = await response.text();
-        let data;
-        try {
-          data = JSON.parse(rawText);
-        } catch {
-          console.log("DEEPSEEK RAW:", rawText);
-          return NextResponse.json({ reply: "DeepSeek invalid response" });
-        }
-
-        console.log("DEEPSEEK RESPONSE:", data);
-
-        if (!response.ok) {
-          return NextResponse.json({ reply: "DeepSeek error: " + (data?.error?.message || data?.detail || "Unknown error") });
-        }
-
-        return NextResponse.json({ reply: data?.choices?.[0]?.message?.content || "No response from DeepSeek" });
-
-      } catch (err: unknown) {
-        clearTimeout(timeout);
-        if (err instanceof Error && err.name === "AbortError") {
-          return NextResponse.json({ reply: "DeepSeek timeout — thodi der baad try karo" });
-        }
-        throw err;
-      }
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemMsg }] }, contents: [{ parts }] }) }
+        );
+        const raw = await r.text(); if (!raw) return NextResponse.json({ reply: "Empty response" });
+        const d   = JSON.parse(raw);
+        if (d?.error?.code === 429) return NextResponse.json({ reply: "Rate limit! Groq try karo." });
+        if (d?.error) return NextResponse.json({ reply: "Gemini error: " + d.error.message });
+        return NextResponse.json({ reply: d?.candidates?.[0]?.content?.parts?.[0]?.text || "No response" });
+      } catch { return NextResponse.json({ reply: "Gemini connection error!" }); }
     }
 
-    // ==================== NVIDIA NEMOTRON ====================
-    if (model === "nemotron") {
-      const NVIDIA_KEY = process.env.NVIDIA_API_KEY;
-      if (!NVIDIA_KEY) {
-        return NextResponse.json({ reply: "NVIDIA API key missing" });
-      }
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-
+    // ── NVIDIA models helper ──
+    const nvidiaCall = async (mdl: string, nm: string) => {
+      const key = process.env.NVIDIA_API_KEY;
+      if (!key) return NextResponse.json({ reply: "NVIDIA API key missing" });
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 30000);
       try {
-        const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        const r = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${NVIDIA_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "nvidia/nemotron-3-super-120b-a12b",
-            messages: [
-              { role: "system", content: "You are a helpful AI assistant." },
-              { role: "user", content: message },
-            ],
-            max_tokens: 2048,
-          }),
-          signal: controller.signal,
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: systemMsg }, { role: "user", content: message }], max_tokens: 4096 }),
+          signal: ctrl.signal,
         });
-        clearTimeout(timeout);
-
-        const rawText = await response.text();
-        let data;
-        try {
-          data = JSON.parse(rawText);
-        } catch {
-          console.log("NEMOTRON RAW:", rawText);
-          return NextResponse.json({ reply: "Nemotron invalid response" });
-        }
-
-        console.log("NEMOTRON RESPONSE:", data);
-
-        if (!response.ok) {
-          return NextResponse.json({ reply: "Nemotron error: " + (data?.error?.message || data?.detail || "Unknown error") });
-        }
-
-        return NextResponse.json({ reply: data?.choices?.[0]?.message?.content || "No response from Nemotron" });
-
-      } catch (err: unknown) {
-        clearTimeout(timeout);
-        if (err instanceof Error && err.name === "AbortError") {
-          return NextResponse.json({ reply: "Nemotron timeout — thodi der baad try karo" });
-        }
-        throw err;
+        clearTimeout(t);
+        const d = JSON.parse(await r.text());
+        if (!r.ok) return NextResponse.json({ reply: `${nm} error: ` + (d?.error?.message || "Unknown") });
+        return NextResponse.json({ reply: d?.choices?.[0]?.message?.content || "No response" });
+      } catch (e: unknown) {
+        clearTimeout(t);
+        if (e instanceof Error && e.name === "AbortError") return NextResponse.json({ reply: `${nm} timeout` });
+        throw e;
       }
-    }
+    };
 
-    // ==================== GPT-OSS-120B (via NVIDIA) ====================
-if (model === "gptoss") {
-  const NVIDIA_KEY = process.env.NVIDIA_API_KEY;
-  if (!NVIDIA_KEY) {
-    return NextResponse.json({ reply: "NVIDIA API key missing" });
-  }
+    if (model === "deepseek") return nvidiaCall("deepseek-ai/deepseek-v3.2",          "DeepSeek");
+    if (model === "nemotron") return nvidiaCall("nvidia/nemotron-3-super-120b-a12b",   "Nemotron");
+    if (model === "gptoss")   return nvidiaCall("openai/gpt-oss-120b",                 "GPT-OSS");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-
-  try {
-    const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${NVIDIA_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-oss-120b",
-        messages: [
-          { role: "system", content: "You are a helpful AI assistant." },
-          { role: "user", content: message },
-        ],
-        max_tokens: 2048,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-
-    const rawText = await response.text();
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      console.log("GPTOSS RAW:", rawText);
-      return NextResponse.json({ reply: "GPT-OSS invalid response" });
-    }
-
-    console.log("GPTOSS RESPONSE:", data);
-
-    if (!response.ok) {
-      return NextResponse.json({ reply: "GPT-OSS error: " + (data?.error?.message || data?.detail || "Unknown error") });
-    }
-
-    return NextResponse.json({ reply: data?.choices?.[0]?.message?.content || "No response from GPT-OSS" });
-
-  } catch (err: unknown) {
-    clearTimeout(timeout);
-    if (err instanceof Error && err.name === "AbortError") {
-      return NextResponse.json({ reply: "GPT-OSS timeout — thodi der baad try karo" });
-    }
-    throw err;
-  }
-}
-
-  // ==================== GEMINI ====================
-if (model === "gemini") {
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_KEY) {
-    return NextResponse.json({ reply: "Gemini API key missing!" });
-  }
-
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: message }] }],
-        }),
-      }
-    );
-
-    const rawText = await response.text();
-    console.log("GEMINI RAW:", rawText); // ← exact error dikhega
-    
-    if (!rawText) {
-      return NextResponse.json({ reply: "Gemini ne khaali response diya!" });
-    }
-
-    const data = JSON.parse(rawText);
-
-    if (data?.error?.code === 429) {
-      return NextResponse.json({ reply: "Gemini rate limit! Groq try karo." });
-    }
-    if (data?.error?.code === 403) {
-      return NextResponse.json({ reply: "Gemini API key leaked/invalid — nayi key banao!" });
-    }
-    if (data?.error) {
-      return NextResponse.json({ reply: "Gemini error: " + data.error.message });
-    }
-
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
-    return NextResponse.json({ reply });
-
-  } catch (err) {
-    console.log("GEMINI CATCH ERROR:", err);
-    return NextResponse.json({ reply: "Gemini connection error!" });
-  }
-}
-
-    // ==================== FALLBACK ====================
-    return NextResponse.json({ reply: "Unknown model selected." });
-
-  } catch (error) {
-    console.error("ERROR:", error);
+    return NextResponse.json({ reply: "Unknown model." });
+  } catch (e) {
+    console.error(e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
