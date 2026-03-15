@@ -41,7 +41,7 @@ export default function Home() {
   const features = [
     {
       num: '1.0', title: 'Smart Conversations',
-      desc: 'Chat with Groq Llama 3.3, Gemini Flash, and DeepSeek. Switch models anytime — each with unique strengths.',
+      desc: 'Chat with Groq Llama 3.3, Gemini Flash, DeepSeek, and NVIDIA Nemotron. Switch models anytime — each with unique strengths.',
       link: '/chat', linkLabel: 'Start chatting →',
       mockup: (
         <div style={{ background:'#0a0a0a', borderRadius:12, border:'1px solid #1e1e1e', overflow:'hidden' }}>
@@ -95,7 +95,7 @@ export default function Home() {
     },
     {
       num: '3.0', title: 'Multi-Model AI',
-      desc: 'Access Groq Llama 3.3, Gemini 1.5 Flash, and DeepSeek — all in one place. Switch instantly.',
+      desc: 'Access Groq Llama 3.3, Gemini 1.5 Flash, DeepSeek, and NVIDIA Nemotron — all in one place. Switch instantly.',
       link: '/chat', linkLabel: 'Try all models →',
       mockup: (
         <div style={{ background:'#0a0a0a', borderRadius:12, border:'1px solid #1e1e1e', overflow:'hidden' }}>
@@ -110,6 +110,7 @@ export default function Home() {
               { name:'Groq Llama 3.3', by:'Meta × Groq', tag:'FREE · Fastest', color:'#f97316', active:true },
               { name:'Gemini 1.5 Flash', by:'Google', tag:'FREE · Smart', color:'#4285f4', active:false },
               { name:'DeepSeek Chat', by:'DeepSeek', tag:'Cheap · Capable', color:'#7c6fff', active:false },
+              { name:'NVIDIA Nemotron 3', by:'NVIDIA', tag:'FREE · Reasoning', color:'#76b900', active:false },
             ].map((m, i) => (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:m.active?'#141414':'transparent', borderRadius:8, border:m.active?'1px solid #2a2a2a':'1px solid transparent' }}>
                 <div style={{ width:28, height:28, borderRadius:8, background:`${m.color}20`, border:`1px solid ${m.color}30`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:m.color, fontWeight:700 }}>{m.name[0]}</div>
@@ -161,7 +162,7 @@ export default function Home() {
       <div style={{ position:'relative', zIndex:10, maxWidth:1200, margin:'0 auto', padding:'140px 32px 80px' }}>
         <div style={{ display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:100, padding:'5px 14px 5px 8px', fontSize:12, color:'#555', marginBottom:36 }}>
           <div style={{ width:7, height:7, borderRadius:'50%', background:'#4ade80', boxShadow:'0 0 8px rgba(74,222,128,0.7)' }}/>
-          Groq · Gemini · DeepSeek — All in one place
+          Groq · Gemini · DeepSeek · NVIDIA — All in one place
         </div>
 
         <h1 style={{ fontSize:'clamp(3rem,5.5vw,5.2rem)', fontWeight:700, lineHeight:1.06, letterSpacing:'-0.04em', color:'white', maxWidth:900, marginBottom:24 }}>
@@ -195,7 +196,8 @@ export default function Home() {
 
         {/* Stats */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:1, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.05)', borderRadius:16, overflow:'hidden', marginTop:40 }}>
-          {[{ num:'3+', label:'AI Models' },{ num:'Free', label:'Groq & Gemini' },{ num:'∞', label:'Conversations' }].map(s => (
+          {[{ num:'4+', label:'AI Models' }
+,{ num:'Free', label:'Groq & Gemini' },{ num:'∞', label:'Conversations' }].map(s => (
             <div key={s.label} style={{ background:'#080808', padding:'40px 32px' }}>
               <div style={{ fontSize:'3rem', fontWeight:800, color:'white', letterSpacing:'-0.04em', marginBottom:8 }}>{s.num}</div>
               <div style={{ fontSize:14, color:'#444' }}>{s.label}</div>

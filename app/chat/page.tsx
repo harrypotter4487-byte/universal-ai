@@ -10,10 +10,11 @@ type Message = {
 };
 
 const MODELS = [
-  { value: "groq", label: "Llama 3.3", provider: "Groq", color: "#f97316", icon: "🦙", tag: "FREE" },
-  { value: "gemini", label: "Flash 1.5", provider: "Gemini", color: "#4285f4", icon: "⚡", tag: "FREE" },
-  { value: "deepseek", label: "DeepSeek", provider: "DeepSeek", color: "#7c6fff", icon: "🤖", tag: "PAID" },
-];
+  { value: 'groq',     provider: 'Groq',   label: 'Llama 3.3',  icon: '⚡', color: '#a78bfa', tag: 'FREE' },
+  { value: 'gemini',   provider: 'Gemini', label: 'Flash 1.5',  icon: '✦',  color: '#34d399', tag: 'FREE' },
+  { value: 'deepseek', provider: 'DeepSeek', label: 'R1',       icon: '🔮', color: '#60a5fa', tag: 'PAID' },
+  { value: 'nemotron', provider: 'NVIDIA', label: 'Nemotron 3', icon: '🟢', color: '#f472b6', tag: 'FREE' },
+]
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
