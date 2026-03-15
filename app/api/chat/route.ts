@@ -206,41 +206,52 @@ if (model === "gptoss") {
   }
 }
 
-    // ==================== GEMINI ====================
-    if (model === "gemini") {
-      const GEMINI_KEY = process.env.GEMINI_API_KEY;
-      if (!GEMINI_KEY) {
-        return NextResponse.json({ reply: "Gemini API key missing" });
+  // ==================== GEMINI ====================
+if (model === "gemini") {
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_KEY) {
+    return NextResponse.json({ reply: "Gemini API key missing!" });
+  }
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: message }] }],
+        }),
       }
+    );
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: message }] }],
-          }),
-        }
-      );
-
-      const rawText = await response.text();
-      if (!rawText) return NextResponse.json({ reply: "No response from Gemini" });
-
-      const data = JSON.parse(rawText);
-      console.log("GEMINI RESPONSE:", data);
-
-      if (!response.ok) {
-        if (data?.error?.code === 429) {
-          return NextResponse.json({ reply: "Gemini busy hai! Groq pe switch karo" });
-        }
-        return NextResponse.json({ reply: "Gemini API error" });
-      }
-
-      return NextResponse.json({
-        reply: data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response from Gemini",
-      });
+    const rawText = await response.text();
+    console.log("GEMINI RAW:", rawText); // ← exact error dikhega
+    
+    if (!rawText) {
+      return NextResponse.json({ reply: "Gemini ne khaali response diya!" });
     }
+
+    const data = JSON.parse(rawText);
+
+    if (data?.error?.code === 429) {
+      return NextResponse.json({ reply: "Gemini rate limit! Groq try karo." });
+    }
+    if (data?.error?.code === 403) {
+      return NextResponse.json({ reply: "Gemini API key leaked/invalid — nayi key banao!" });
+    }
+    if (data?.error) {
+      return NextResponse.json({ reply: "Gemini error: " + data.error.message });
+    }
+
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
+    return NextResponse.json({ reply });
+
+  } catch (err) {
+    console.log("GEMINI CATCH ERROR:", err);
+    return NextResponse.json({ reply: "Gemini connection error!" });
+  }
+}
 
     // ==================== FALLBACK ====================
     return NextResponse.json({ reply: "Unknown model selected." });
