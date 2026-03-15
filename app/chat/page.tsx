@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { useEffect, useRef, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 
@@ -25,16 +27,15 @@ export default function ChatPage() {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [liveText, setLiveText] = useState(""); // live transcript shown on screen
+  const [liveText, setLiveText] = useState("");
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const isListeningRef = useRef(false);
-  const inputRef = useRef(""); // tracks input value for use inside recognition callbacks
+  const inputRef = useRef("");
 
-  // Keep inputRef in sync with input state
   useEffect(() => { inputRef.current = input; }, [input]);
 
   useEffect(() => {
@@ -101,19 +102,18 @@ export default function ChatPage() {
 
   // ── MIC ──
   const startListening = () => {
-    const SpeechRecognition =
-      (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+    const SpeechRecognitionAPI =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionAPI) {
       alert("Chrome browser use karo!");
       return;
     }
 
-    // Stop karo
     if (isListeningRef.current) {
       isListeningRef.current = false;
-      recognitionRef.current?.abort();
+      try { recognitionRef.current?.abort(); } catch { /* ignore */ }
       setIsListening(false);
       setLiveText("");
       return;
@@ -124,16 +124,17 @@ export default function ChatPage() {
     setLiveText("");
 
     const startRecognition = () => {
-      const recognition = new SpeechRecognition();
+      if (!isListeningRef.current) return;
+
+      const recognition = new SpeechRecognitionAPI();
       recognitionRef.current = recognition;
       recognition.continuous = false;
       recognition.interimResults = true;
-      recognition.lang = "en-IN"; // Hindi + English dono
+      recognition.lang = "en-IN";
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
+      recognition.onresult = (event: any) => {
         let interimText = "";
         let finalText = "";
-
         for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) {
@@ -143,19 +144,16 @@ export default function ChatPage() {
           }
         }
 
-        // Live text dikhao
         setLiveText(interimText || finalText);
 
-        // Final text → input mein daalo
         if (finalText) {
           const newValue = inputRef.current
-            ? inputRef.current + " " + finalText
-            : finalText;
+            ? inputRef.current + " " + finalText.trim()
+            : finalText.trim();
           setInput(newValue);
           inputRef.current = newValue;
           setLiveText("");
 
-          // Textarea height update karo
           if (textareaRef.current) {
             textareaRef.current.style.height = "auto";
             textareaRef.current.style.height =
@@ -164,7 +162,13 @@ export default function ChatPage() {
         }
       };
 
-      recognition.onerror = () => {
+      recognition.onerror = (event: any) => {
+        if (event.error === "not-allowed") {
+          alert("Mic permission do browser settings mein!");
+          isListeningRef.current = false;
+          setIsListening(false);
+          return;
+        }
         if (isListeningRef.current) {
           setTimeout(startRecognition, 300);
         }
@@ -196,7 +200,7 @@ export default function ChatPage() {
 
     if (isListeningRef.current) {
       isListeningRef.current = false;
-      recognitionRef.current?.abort();
+      try { recognitionRef.current?.abort(); } catch { /* ignore */ }
       setIsListening(false);
       setLiveText("");
     }
@@ -231,11 +235,7 @@ export default function ChatPage() {
   const currentModel = MODELS.find(m => m.value === model)!;
 
   return (
-    <div style={{
-      display: "flex", height: "100dvh", flexDirection: "column",
-      background: "#080808", color: "white",
-      fontFamily: "'Inter', sans-serif", overflow: "hidden",
-    }}>
+    <div style={{ display:"flex", height:"100dvh", flexDirection:"column", background:"#080808", color:"white", fontFamily:"'Inter',sans-serif", overflow:"hidden" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -296,7 +296,7 @@ export default function ChatPage() {
             </a>
             <button
               onClick={() => { setVoiceEnabled(!voiceEnabled); stopSpeaking(); }}
-              style={{ background: voiceEnabled ? "rgba(168,139,250,0.15)" : "#111", border: voiceEnabled ? "1px solid rgba(168,139,250,0.3)" : "1px solid #222", borderRadius:8, padding:"6px 12px", color: voiceEnabled ? "#a78bfa" : "#444", fontSize:12, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:5, fontFamily:"Inter,sans-serif", transition:"all 0.2s" }}
+              style={{ background:voiceEnabled?"rgba(168,139,250,0.15)":"#111", border:voiceEnabled?"1px solid rgba(168,139,250,0.3)":"1px solid #222", borderRadius:8, padding:"6px 12px", color:voiceEnabled?"#a78bfa":"#444", fontSize:12, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", gap:5, fontFamily:"Inter,sans-serif", transition:"all 0.2s" }}
             >
               <span style={{ fontSize:14 }}>{voiceEnabled ? "🔊" : "🔇"}</span>
               <span>{voiceEnabled ? "Voice On" : "Voice Off"}</span>
@@ -305,7 +305,7 @@ export default function ChatPage() {
 
           <div className="tabs-scroll">
             {MODELS.map(m => (
-              <button key={m.value} onClick={() => setModel(m.value)} className={`model-tab ${model===m.value?"active":""}`} style={model===m.value ? { borderColor:`${m.color}40`, background:`${m.color}10` } : {}}>
+              <button key={m.value} onClick={() => setModel(m.value)} className={`model-tab ${model===m.value?"active":""}`} style={model===m.value?{borderColor:`${m.color}40`,background:`${m.color}10`}:{}}>
                 <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                   <span style={{ fontSize:13 }}>{m.icon}</span>
                   <div style={{ textAlign:"left" }}>
@@ -382,10 +382,7 @@ export default function ChatPage() {
       <div style={{ borderTop:"1px solid rgba(255,255,255,0.06)", padding:"12px 16px", background:"rgba(8,8,8,0.98)", backdropFilter:"blur(16px)", flexShrink:0, paddingBottom:"max(12px, env(safe-area-inset-bottom))" }}>
         <div style={{ maxWidth:800, margin:"0 auto" }}>
 
-          {/* Live transcript */}
-          {liveText && (
-            <div className="live-text">🎙 {liveText}</div>
-          )}
+          {liveText && <div className="live-text">🎙 {liveText}</div>}
 
           <div style={{ background:"#0d0d0d", border:`1px solid ${isListening?"#ef4444":currentModel.color}30`, borderRadius:14, display:"flex", alignItems:"flex-end", transition:"border-color 0.2s" }}>
             <textarea
@@ -405,7 +402,7 @@ export default function ChatPage() {
                   sendMessage();
                 }
               }}
-              placeholder={isListening ? "Bol raha hun... 🎙" : `${currentModel.provider} se pucho kuch bhi...`}
+              placeholder={isListening ? "Sun rahi hun... 🎙" : `${currentModel.provider} se pucho kuch bhi...`}
             />
 
             <button className={`icon-btn ${isListening?"mic-active":""}`} onClick={startListening} style={{ margin:"8px 4px 8px 0", color:isListening?"#ef4444":"#444", border:isListening?"1px solid rgba(239,68,68,0.3)":"1px solid transparent" }}>
