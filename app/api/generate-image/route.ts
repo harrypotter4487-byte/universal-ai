@@ -4,32 +4,58 @@ export async function POST(req: NextRequest) {
   try {
     const { prompt } = await req.json();
 
+    if (!prompt) {
+      return NextResponse.json(
+        { error: "Prompt is required" },
+        { status: 400 }
+      );
+    }
+
     const response = await fetch(
-      "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
+      "https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-xl",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({ inputs: prompt }),
+        body: JSON.stringify({
+          text_prompts: [
+            {
+              text: prompt
+            }
+          ],
+          cfg_scale: 7,
+          height: 1024,
+          width: 1024,
+          samples: 1,
+          steps: 30
+        })
       }
     );
 
-    if (!response.ok) {
-      const text = await response.text();
-      return NextResponse.json({ error: text }, { status: 500 });
+    const data = await response.json();
+
+    console.log("NVIDIA RESPONSE:", data);
+
+    const image = data?.artifacts?.[0]?.base64;
+
+    if (!image) {
+      return NextResponse.json({
+        error: "Image generation failed"
+      });
     }
 
-    const imageBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(imageBuffer).toString("base64");
-
     return NextResponse.json({
-      image: `data:image/png;base64,${base64}`
+      image: `data:image/png;base64,${image}`
     });
 
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    console.error("ERROR:", error);
+
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500 }
+    );
   }
 }
