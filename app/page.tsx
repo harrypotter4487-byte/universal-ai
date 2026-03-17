@@ -29,7 +29,21 @@ export default function Page() {
   const [step,        setStep]        = useState(0);
   const [openFaq,     setOpenFaq]     = useState<number | null>(null);
   const [visible,     setVisible]     = useState<Set<string>>(new Set());
+  const [isLoggedIn,  setIsLoggedIn]  = useState(false);  // ✅ NEW
+  const [userName,    setUserName]    = useState("");      // ✅ NEW
   const observerRef = useRef<IntersectionObserver | null>(null);
+
+  /* ✅ Check localStorage session on mount */
+  useEffect(() => {
+    try {
+      const session = localStorage.getItem("uai_session");
+      if (session) {
+        const data = JSON.parse(session);
+        setIsLoggedIn(true);
+        setUserName(data.email?.split("@")[0] || "User");
+      }
+    } catch {}
+  }, []);
 
   /* scroll-triggered reveals */
   useEffect(() => {
@@ -38,7 +52,6 @@ export default function Page() {
         entries.forEach((e) => {
           if (e.isIntersecting) {
             const key = e.target.getAttribute("data-reveal") || "";
-            // ✅ TypeScript fix — Array.from instead of spread on Set
             setVisible((prev) => new Set(Array.from(prev).concat(key)));
           }
         });
@@ -62,6 +75,12 @@ export default function Page() {
   const conv  = CONVOS[activeModel];
   const isVis = (id: string) => visible.has(id);
 
+  const handleLogout = () => {
+    localStorage.removeItem("uai_session");
+    setIsLoggedIn(false);
+    setUserName("");
+  };
+
   return (
     <>
       {/* ── NAV ── */}
@@ -75,9 +94,38 @@ export default function Page() {
             <a key={h} href={h} className="nav-link">{l}</a>
           ))}
         </div>
+
+        {/* ✅ AUTH-AWARE NAV BUTTONS */}
         <div className="nav-right">
-          <Link href="/login" className="nav-signin">Sign in</Link>
-          <Link href="/chat" className="nav-cta">Get started</Link>
+          {isLoggedIn ? (
+            <>
+              {/* Logged in: show user avatar + Open Chat */}
+              <div style={{
+                display:"flex", alignItems:"center", gap:8,
+                padding:"6px 12px", borderRadius:99,
+                border:"1px solid rgba(255,255,255,0.1)",
+                background:"rgba(255,255,255,0.04)",
+                fontSize:"0.78rem", color:"rgba(255,255,255,0.6)"
+              }}>
+                <div style={{
+                  width:24, height:24, borderRadius:"50%",
+                  background:"linear-gradient(135deg,#ff9500,#ff453a)",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:"0.65rem", fontWeight:700, color:"#fff"
+                }}>
+                  {userName?.[0]?.toUpperCase() || "U"}
+                </div>
+                {userName}
+              </div>
+              <Link href="/chat" className="nav-cta">Open chat</Link>
+            </>
+          ) : (
+            <>
+              {/* Not logged in: show Sign in + Get started */}
+              <Link href="/login" className="nav-signin">Sign in</Link>
+              <Link href="/login" className="nav-cta">Get started</Link>
+            </>
+          )}
         </div>
       </nav>
 
@@ -100,7 +148,10 @@ export default function Page() {
           </p>
 
           <div className="hero-actions">
-            <Link href="/chat" className="btn-primary">Start chatting free</Link>
+            {/* ✅ If logged in → /chat, else → /login */}
+            <Link href={isLoggedIn ? "/chat" : "/login"} className="btn-primary">
+              {isLoggedIn ? "Open chat" : "Start chatting free"}
+            </Link>
             <Link href="/images" className="btn-secondary">Generate images</Link>
           </div>
 
@@ -163,7 +214,7 @@ export default function Page() {
 
             <div className="chat-foot">
               <div className="chat-input-mock">Ask anything...</div>
-              <Link href="/chat" className="chat-send-btn">↑</Link>
+              <Link href={isLoggedIn ? "/chat" : "/login"} className="chat-send-btn">↑</Link>
             </div>
           </div>
         </div>
@@ -314,7 +365,8 @@ export default function Page() {
                   {m.id==="deep"   && "Exceptional step-by-step reasoning. Math, logic, and research problems where you want the working shown."}
                   {m.id==="nvidia" && "Strong technical depth. STEM topics, detailed explanations, and scenarios where accuracy beats speed."}
                 </p>
-                <Link href="/chat" className="mc-link">Try {m.name} →</Link>
+                {/* ✅ Model try links also auth-aware */}
+                <Link href={isLoggedIn ? "/chat" : "/login"} className="mc-link">Try {m.name} →</Link>
               </div>
             ))}
           </div>
@@ -348,7 +400,7 @@ export default function Page() {
                   {p.perks.map((k,j) => <li key={j}>{k}</li>)}
                 </ul>
                 <Link
-                  href="/chat"
+                  href={isLoggedIn ? "/chat" : "/login"}
                   className={p.hi ? "btn-primary" : "btn-secondary"}
                   style={{ textAlign: "center", justifyContent: "center" }}
                 >
@@ -405,7 +457,9 @@ export default function Page() {
           </h2>
           <p className="fin-p">No signup needed to try. No credit card. Open and chat.</p>
           <div className="fin-btns">
-            <Link href="/chat"   className="btn-primary"   style={{ height: 52, padding: "0 36px", fontSize: "0.95rem" }}>Open chat — it's free</Link>
+            <Link href={isLoggedIn ? "/chat" : "/login"} className="btn-primary" style={{ height: 52, padding: "0 36px", fontSize: "0.95rem" }}>
+              {isLoggedIn ? "Open chat" : "Open chat — it's free"}
+            </Link>
             <Link href="/images" className="btn-secondary" style={{ height: 52, padding: "0 36px", fontSize: "0.95rem" }}>Generate images</Link>
           </div>
         </div>

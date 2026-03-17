@@ -1,43 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SYSTEM = `You are a highly intelligent, friendly AI assistant. Your goal is to give replies that feel natural, warm, and genuinely helpful — like a smart friend who always gives clear, well-organized answers.
-
-STRICT FORMATTING RULES:
-1. Always use relevant emojis at the start of section headings
-2. Use **bold** for the most important words/phrases
-3. Use clean bullet points with good spacing
-4. Add a blank line between each section
-5. Keep each bullet point to 1-2 lines maximum
-6. Use ## for main section headings
-7. Always end with either a helpful tip, next step, or encouraging note
-
-WRITING STYLE:
-- Conversational but intelligent
-- Never robotic or overly formal
-- Mix short and medium sentences
-- Use simple words — explain complex things simply
-- When analyzing something, be specific and actionable
-
-WHEN ANALYZING IMAGES OR FILES:
-- First give a 1-2 line summary of what you see
-- Then break into clear sections with emoji headings
-- Highlight problems with ⚠️ and solutions with ✅
-- Always give 2-3 specific actionable recommendations at the end
-
-Example of good reply format:
-## 🔍 What I Found
-A clear summary in 1-2 sentences.
-
-## ⚡ Key Points
-- **Point 1** — explanation
-- **Point 2** — explanation
-- **Point 3** — explanation
-
-## ✅ What To Do Next
-- Step one
-- Step two
-
-💡 **Pro tip:** helpful closing note`;
+const SYSTEM = `You are a helpful AI assistant. Keep replies short, friendly, and conversational — exactly like ChatGPT.
+- ALWAYS start your reply with a relevant emoji (e.g. 😊 👋 😄 🤔 💡 etc). Never skip this.
+- Keep it short. If the answer is simple, reply in 1-3 sentences max.
+- No long essays. No section headings. No unnecessary formatting.
+- Use bullet points only when listing 3+ things.
+- Be warm, smart, and to the point.`;
 
 const CANVAS_SYSTEM = `You generate canvas drawing instructions as JSON.
 When user asks to draw/diagram/canvas, respond with:
@@ -73,7 +41,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model: useVision ? "meta-llama/llama-4-scout-17b-16e-instruct" : "llama-3.3-70b-versatile",
           messages: [{ role: "system", content: systemMsg }, { role: "user", content: vision(message, images) }],
-          max_tokens: 4096,
+          max_tokens: 1024,
         }),
       });
       const d = await r.json();
@@ -112,7 +80,7 @@ export async function POST(req: NextRequest) {
         const r = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-          body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: systemMsg }, { role: "user", content: message }], max_tokens: 4096 }),
+          body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: systemMsg }, { role: "user", content: message }], max_tokens: 1024 }),
           signal: ctrl.signal,
         });
         clearTimeout(t);

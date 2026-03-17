@@ -33,70 +33,21 @@ const CANVAS_KW = ["canvas","whiteboard","white canvas","diagram banao","draw ka
 const isCanvas  = (t:string) => CANVAS_KW.some(k=>t.toLowerCase().includes(k));
 
 function extractCSV(t:string){ const m=t.match(/```csv\n([\s\S]+?)```/); return m?m[1]:null; }
-function extractShapes(t:string):Shape[]|null{
-  const m=t.match(/```canvas\n?([\s\S]+?)```/); if(!m) return null;
-  try{ return JSON.parse(m[1]); }catch{ return null; }
-}
-function csvHtml(csv:string){
-  const rows=csv.trim().split("\n").map(r=>r.split(",").map(c=>c.trim().replace(/^"|"$/g,"")));
-  if(!rows.length) return "";
-  return `<table class="ctbl"><thead><tr>${rows[0].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.slice(1).map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-}
+function extractShapes(t:string):Shape[]|null{ const m=t.match(/```canvas\n?([\s\S]+?)```/); if(!m) return null; try{ return JSON.parse(m[1]); }catch{ return null; } }
+function csvHtml(csv:string){ const rows=csv.trim().split("\n").map(r=>r.split(",").map(c=>c.trim().replace(/^"|"$/g,""))); if(!rows.length) return ""; return `<table class="ctbl"><thead><tr>${rows[0].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.slice(1).map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`; }
 function dlCSV(csv:string){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="export.csv"; a.click(); }
 function fmtB(b:number){ return b<1024?b+"B":b<1048576?(b/1024).toFixed(1)+"KB":(b/1048576).toFixed(1)+"MB"; }
 function fIcon(t:string){ if(t.startsWith("image/"))return"🖼"; if(t.includes("pdf"))return"📄"; if(t.includes("sheet")||t.includes("csv"))return"📊"; if(t.includes("word"))return"📝"; return"📎"; }
 function genId(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
-function groupSessions(sessions:ChatSession[]){
-  const now=Date.now(); const day=86400000;
-  const today:ChatSession[]=[]; const yesterday:ChatSession[]=[]; const week:ChatSession[]=[]; const older:ChatSession[]=[];
-  sessions.forEach(s=>{
-    const d=now-s.createdAt;
-    if(d<day) today.push(s);
-    else if(d<2*day) yesterday.push(s);
-    else if(d<7*day) week.push(s);
-    else older.push(s);
-  });
-  return {today,yesterday,week,older};
-}
+function groupSessions(sessions:ChatSession[]){ const now=Date.now(); const day=86400000; const today:ChatSession[]=[]; const yesterday:ChatSession[]=[]; const week:ChatSession[]=[]; const older:ChatSession[]=[]; sessions.forEach(s=>{ const d=now-s.createdAt; if(d<day) today.push(s); else if(d<2*day) yesterday.push(s); else if(d<7*day) week.push(s); else older.push(s); }); return {today,yesterday,week,older}; }
 async function toDataUrl(f:File):Promise<string>{ return new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result as string);rd.readAsDataURL(f);}); }
 async function toText(f:File):Promise<string>{ return new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result as string||"");rd.onerror=()=>r("");rd.readAsText(f);}); }
-async function procFile(f:File):Promise<UFile>{
-  const dataUrl=await toDataUrl(f);
-  const text=f.type.startsWith("image/")?"":(await toText(f)).slice(0,8000);
-  return {name:f.name,type:f.type,size:f.size,dataUrl,text};
-}
+async function procFile(f:File):Promise<UFile>{ const dataUrl=await toDataUrl(f); const text=f.type.startsWith("image/")? "":(await toText(f)).slice(0,8000); return {name:f.name,type:f.type,size:f.size,dataUrl,text}; }
 
 function MiniCanvas({shapes,onClose}:{shapes:Shape[];onClose:()=>void}){
   const ref=useRef<HTMLCanvasElement>(null);
-  useEffect(()=>{
-    const c=ref.current; if(!c) return;
-    const ctx=c.getContext("2d")!;
-    ctx.fillStyle="#fff"; ctx.fillRect(0,0,c.width,c.height);
-    ctx.strokeStyle="rgba(0,0,0,0.05)"; ctx.lineWidth=1;
-    for(let x=0;x<c.width;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke();}
-    for(let y=0;y<c.height;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke();}
-    shapes.forEach(s=>{
-      ctx.strokeStyle=s.color||"#1d4ed8"; ctx.fillStyle=s.fill||"transparent"; ctx.lineWidth=2;
-      if(s.type==="rect"){if(s.fill&&s.fill!=="transparent"){ctx.fillStyle=s.fill;ctx.fillRect(s.x,s.y,s.w!,s.h!);}ctx.strokeRect(s.x,s.y,s.w!,s.h!);}
-      else if(s.type==="circle"){ctx.beginPath();ctx.arc(s.x,s.y,s.r!,0,Math.PI*2);if(s.fill&&s.fill!=="transparent")ctx.fill();ctx.stroke();}
-      else if(s.type==="text"){ctx.font=`${s.bold?"bold ":""}${s.fontSize||15}px 'Inter',sans-serif`;ctx.fillStyle=s.color||"#111";ctx.fillText(s.text!,s.x,s.y);}
-      else if(s.type==="line"){ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.w!,s.h!);ctx.stroke();}
-    });
-  },[shapes]);
-  return(
-    <div style={{border:"1px solid #3a3a3a",borderRadius:12,overflow:"hidden",marginTop:12}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",background:"#2a2a2a",borderBottom:"1px solid #3a3a3a"}}>
-        <span style={{fontSize:"0.7rem",fontWeight:700,color:"#888",letterSpacing:"0.06em"}}>🎨 CANVAS</span>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>{const c=ref.current;if(!c)return;const a=document.createElement("a");a.href=c.toDataURL();a.download="canvas.png";a.click();}} style={{padding:"3px 10px",borderRadius:6,border:"none",background:"#e5e7eb",color:"#111",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>↓ Save</button>
-          <button onClick={onClose} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #3a3a3a",background:"transparent",color:"#888",fontSize:"0.68rem",cursor:"pointer"}}>✕</button>
-        </div>
-      </div>
-      <div style={{overflow:"auto",padding:16,background:"#1e1e1e"}}>
-        <canvas ref={ref} width={900} height={480} style={{display:"block",maxWidth:"100%",borderRadius:8,boxShadow:"0 2px 16px rgba(0,0,0,0.4)"}}/>
-      </div>
-    </div>
-  );
+  useEffect(()=>{ const c=ref.current; if(!c) return; const ctx=c.getContext("2d")!; ctx.fillStyle="#fff"; ctx.fillRect(0,0,c.width,c.height); ctx.strokeStyle="rgba(0,0,0,0.05)"; ctx.lineWidth=1; for(let x=0;x<c.width;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke();} for(let y=0;y<c.height;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke();} shapes.forEach(s=>{ ctx.strokeStyle=s.color||"#1d4ed8"; ctx.fillStyle=s.fill||"transparent"; ctx.lineWidth=2; if(s.type==="rect"){if(s.fill&&s.fill!=="transparent"){ctx.fillStyle=s.fill;ctx.fillRect(s.x,s.y,s.w!,s.h!);}ctx.strokeRect(s.x,s.y,s.w!,s.h!);} else if(s.type==="circle"){ctx.beginPath();ctx.arc(s.x,s.y,s.r!,0,Math.PI*2);if(s.fill&&s.fill!=="transparent")ctx.fill();ctx.stroke();} else if(s.type==="text"){ctx.font=`${s.bold?"bold ":""}${s.fontSize||15}px 'Inter',sans-serif`;ctx.fillStyle=s.color||"#111";ctx.fillText(s.text!,s.x,s.y);} else if(s.type==="line"){ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.w!,s.h!);ctx.stroke();} }); },[shapes]);
+  return(<div style={{border:"1px solid #3a3a3a",borderRadius:12,overflow:"hidden",marginTop:12}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",background:"#2a2a2a",borderBottom:"1px solid #3a3a3a"}}><span style={{fontSize:"0.7rem",fontWeight:700,color:"#888",letterSpacing:"0.06em"}}>🎨 CANVAS</span><div style={{display:"flex",gap:8}}><button onClick={()=>{const c=ref.current;if(!c)return;const a=document.createElement("a");a.href=c.toDataURL();a.download="canvas.png";a.click();}} style={{padding:"3px 10px",borderRadius:6,border:"none",background:"#e5e7eb",color:"#111",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>↓ Save</button><button onClick={onClose} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #3a3a3a",background:"transparent",color:"#888",fontSize:"0.68rem",cursor:"pointer"}}>✕</button></div></div><div style={{overflow:"auto",padding:16,background:"#1e1e1e"}}><canvas ref={ref} width={900} height={480} style={{display:"block",maxWidth:"100%",borderRadius:8,boxShadow:"0 2px 16px rgba(0,0,0,0.4)"}}/></div></div>);
 }
 
 export default function ChatPage(){
@@ -140,73 +91,18 @@ export default function ChatPage(){
   const vInpRef   = useRef("");
   const profileRef= useRef<HTMLDivElement>(null);
 
-  // ── localStorage AUTH CHECK ──────────────────────────
-  useEffect(()=>{
-    const session = localStorage.getItem("uai_session");
-    if(!session){
-      router.push("/login");
-      return;
-    }
-    try{
-      const data = JSON.parse(session);
-      setUserEmail(data.email || "");
-      setUserName(data.email?.split("@")[0] || "User");
-    }catch{}
-    setAuthReady(true);
+  useEffect(()=>{ const session=localStorage.getItem("uai_session"); if(!session){router.push("/login");return;} try{const data=JSON.parse(session);setUserEmail(data.email||"");setUserName(data.email?.split("@")[0]||"User");}catch{} setAuthReady(true); try{const saved=localStorage.getItem("uai_sessions");if(saved)setSessions(JSON.parse(saved));}catch{} },[]);
+  useEffect(()=>{ if(!authReady) return; try{localStorage.setItem("uai_sessions",JSON.stringify(sessions));}catch{} },[sessions,authReady]);
 
-    // Load chat history from localStorage
-    try{
-      const saved = localStorage.getItem("uai_sessions");
-      if(saved) setSessions(JSON.parse(saved));
-    }catch{}
-  },[]);
+  const saveCurrentSession=useCallback((currentMsgs:Msg[],currentModel:string,currentId:string|null)=>{ if(currentMsgs.length===0) return null; const title=currentMsgs.find(m=>m.role==="user")?.content.slice(0,50)||"New chat"; const id=currentId||genId(); setSessions(prev=>{const exists=prev.find(s=>s.id===id);if(exists) return prev.map(s=>s.id===id?{...s,messages:currentMsgs,model:currentModel,title}:s);return [{id,title,messages:currentMsgs,model:currentModel,createdAt:Date.now()},...prev];}); return id; },[]);
 
-  // Save sessions to localStorage whenever they change
-  useEffect(()=>{
-    if(!authReady) return;
-    try{
-      localStorage.setItem("uai_sessions", JSON.stringify(sessions));
-    }catch{}
-  },[sessions, authReady]);
-
-  const saveCurrentSession = useCallback((currentMsgs:Msg[], currentModel:string, currentId:string|null)=>{
-    if(currentMsgs.length===0) return null;
-    const title = currentMsgs.find(m=>m.role==="user")?.content.slice(0,50) || "New chat";
-    const id = currentId || genId();
-    setSessions(prev=>{
-      const exists = prev.find(s=>s.id===id);
-      if(exists) return prev.map(s=>s.id===id?{...s,messages:currentMsgs,model:currentModel,title}:s);
-      return [{id,title,messages:currentMsgs,model:currentModel,createdAt:Date.now()},...prev];
-    });
-    return id;
-  },[]);
-
-  const handleLogout = ()=>{
-    localStorage.removeItem("uai_session");
-    router.push("/login");
-  };
+  const handleLogout=()=>{localStorage.removeItem("uai_session");router.push("/login");};
 
   useEffect(()=>{inpRef.current=input;},[input]);
   useEffect(()=>{botRef.current?.scrollIntoView({behavior:"smooth"});},[msgs,loading]);
-  useEffect(()=>{ if(typeof window!=="undefined"){synthRef.current=window.speechSynthesis;window.speechSynthesis.getVoices();} },[]);
-  useEffect(()=>{
-    const fn=(e:MouseEvent)=>{
-      if(pickRef.current&&!pickRef.current.contains(e.target as Node)) setShowPick(false);
-      if(profileRef.current&&!profileRef.current.contains(e.target as Node)) setShowProfile(false);
-    };
-    document.addEventListener("mousedown",fn); return()=>document.removeEventListener("mousedown",fn);
-  },[]);
-  useEffect(()=>{
-    const fn=(e:MouseEvent)=>{
-      const sb=document.getElementById("sidebar");
-      if(sidebarOpen&&sb&&!sb.contains(e.target as Node)){
-        const tog=document.getElementById("sidebar-toggle");
-        if(tog&&tog.contains(e.target as Node)) return;
-        setSidebarOpen(false);
-      }
-    };
-    document.addEventListener("mousedown",fn); return()=>document.removeEventListener("mousedown",fn);
-  },[sidebarOpen]);
+  useEffect(()=>{if(typeof window!=="undefined"){synthRef.current=window.speechSynthesis;window.speechSynthesis.getVoices();}},[]);
+  useEffect(()=>{ const fn=(e:MouseEvent)=>{ if(pickRef.current&&!pickRef.current.contains(e.target as Node))setShowPick(false); if(profileRef.current&&!profileRef.current.contains(e.target as Node))setShowProfile(false); }; document.addEventListener("mousedown",fn); return()=>document.removeEventListener("mousedown",fn); },[]);
+  useEffect(()=>{ const fn=(e:MouseEvent)=>{const sb=document.getElementById("sidebar");if(sidebarOpen&&sb&&!sb.contains(e.target as Node)){const tog=document.getElementById("sidebar-toggle");if(tog&&tog.contains(e.target as Node))return;setSidebarOpen(false);}};document.addEventListener("mousedown",fn);return()=>document.removeEventListener("mousedown",fn); },[sidebarOpen]);
 
   const rTA=()=>{const ta=taRef.current;if(!ta)return;ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,160)+"px";};
   const addFiles=async(fl:FileList|File[])=>{const p=await Promise.all(Array.from(fl).map(procFile));setFiles(prev=>[...prev,...p]);};
@@ -214,126 +110,24 @@ export default function ChatPage(){
   const onDrop=(e:React.DragEvent)=>{e.preventDefault();setDragging(false);if(e.dataTransfer.files)addFiles(e.dataTransfer.files);};
   const rmFile=(i:number)=>setFiles(prev=>prev.filter((_,j)=>j!==i));
 
-  const startNewChat=useCallback(()=>{
-    if(msgs.length>0){ saveCurrentSession(msgs,model,activeId); }
-    setMsgs([]); setInput(""); setFiles([]); setActiveId(null); setClosedC(new Set());
-    if(taRef.current) taRef.current.style.height="auto";
-    if(window.innerWidth<768) setSidebarOpen(false);
-  },[msgs,model,activeId,saveCurrentSession]);
+  const startNewChat=useCallback(()=>{if(msgs.length>0){saveCurrentSession(msgs,model,activeId);}setMsgs([]);setInput("");setFiles([]);setActiveId(null);setClosedC(new Set());if(taRef.current)taRef.current.style.height="auto";if(window.innerWidth<768)setSidebarOpen(false);},[msgs,model,activeId,saveCurrentSession]);
+  const loadSession=(session:ChatSession)=>{if(msgs.length>0&&activeId!==session.id)saveCurrentSession(msgs,model,activeId);setMsgs(session.messages);setModel(session.model);setActiveId(session.id);setClosedC(new Set());if(window.innerWidth<768)setSidebarOpen(false);};
+  const deleteSession=(id:string,e:React.MouseEvent)=>{e.stopPropagation();setSessions(prev=>prev.filter(s=>s.id!==id));if(activeId===id){setMsgs([]);setActiveId(null);}};
 
-  const loadSession=(session:ChatSession)=>{
-    if(msgs.length>0&&activeId!==session.id) saveCurrentSession(msgs,model,activeId);
-    setMsgs(session.messages); setModel(session.model);
-    setActiveId(session.id); setClosedC(new Set());
-    if(window.innerWidth<768) setSidebarOpen(false);
-  };
+  const send=async(ov?:string)=>{ const text=(ov??input).trim(); if((!text&&files.length===0)||loading) return; const imgFiles=files.filter(f=>f.type.startsWith("image/")); const otherFiles=files.filter(f=>!f.type.startsWith("image/")); const wc=isCanvas(text); let ctx=""; if(otherFiles.length>0) ctx="\n\n[Files attached]\n"+otherFiles.map(f=>`${f.name}:\n${(f.text||"").slice(0,5000)}`).join("\n\n"); if(imgFiles.length>0&&!wc) ctx+="\n\nAnalyze the attached image thoroughly."; const um:Msg={role:"user",content:text,files:files.length>0?[...files]:undefined}; const newMsgs=[...msgs,um]; setMsgs(newMsgs); setInput(""); inpRef.current=""; setFiles([]); if(taRef.current) taRef.current.style.height="auto"; setLoading(true); try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text+ctx,model,wantsCanvas:wc,images:imgFiles.map(f=>f.dataUrl)})}); const data=await res.json(); const reply=data.reply||"No reply received."; const shapes=wc?extractShapes(reply)||undefined:undefined; const finalMsgs=[...newMsgs,{role:"assistant" as const,content:reply,model,shapes}]; setMsgs(finalMsgs); const savedId=saveCurrentSession(finalMsgs,model,activeId); if(savedId&&!activeId) setActiveId(savedId); if(voiceOn) spk(reply.slice(0,400)); }catch{setMsgs(prev=>[...prev,{role:"assistant",content:"Network error. Try again.",model}]);} setLoading(false); };
 
-  const deleteSession=(id:string,e:React.MouseEvent)=>{
-    e.stopPropagation();
-    setSessions(prev=>prev.filter(s=>s.id!==id));
-    if(activeId===id){ setMsgs([]); setActiveId(null); }
-  };
-
-  const send=async(ov?:string)=>{
-    const text=(ov??input).trim();
-    if((!text&&files.length===0)||loading) return;
-    const imgFiles=files.filter(f=>f.type.startsWith("image/"));
-    const otherFiles=files.filter(f=>!f.type.startsWith("image/"));
-    const wc=isCanvas(text);
-    let ctx="";
-    if(otherFiles.length>0) ctx="\n\n[Files attached]\n"+otherFiles.map(f=>`${f.name}:\n${(f.text||"").slice(0,5000)}`).join("\n\n");
-    if(imgFiles.length>0&&!wc) ctx+="\n\nAnalyze the attached image thoroughly.";
-    const um:Msg={role:"user",content:text,files:files.length>0?[...files]:undefined};
-    const newMsgs=[...msgs,um];
-    setMsgs(newMsgs); setInput(""); inpRef.current=""; setFiles([]);
-    if(taRef.current) taRef.current.style.height="auto";
-    setLoading(true);
-    try{
-      const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text+ctx,model,wantsCanvas:wc,images:imgFiles.map(f=>f.dataUrl)})});
-      const data=await res.json();
-      const reply=data.reply||"No reply received.";
-      const shapes=wc?extractShapes(reply)||undefined:undefined;
-      const finalMsgs=[...newMsgs,{role:"assistant" as const,content:reply,model,shapes}];
-      setMsgs(finalMsgs);
-      const savedId=saveCurrentSession(finalMsgs,model,activeId);
-      if(savedId&&!activeId) setActiveId(savedId);
-      if(voiceOn) spk(reply.slice(0,400));
-    }catch{
-      setMsgs(prev=>[...prev,{role:"assistant",content:"Network error. Try again.",model}]);
-    }
-    setLoading(false);
-  };
-
-  const spk=(text:string,cb?:()=>void)=>{
-    if(!synthRef.current) return;
-    synthRef.current.cancel();
-    const cleanText=text.replace(/```[\s\S]*?```/g,"").replace(/[`*#_]/g,"").slice(0,500);
-    const u=new SpeechSynthesisUtterance(cleanText);
-    const go=()=>{
-      const voices=synthRef.current!.getVoices();
-      const preferred=["Google UK English Female","Google US English","Microsoft Zira - English (United States)","Samantha","Karen","Veena"];
-      let picked:SpeechSynthesisVoice|undefined;
-      for(const name of preferred){const found=voices.find(v=>v.name===name);if(found){picked=found;break;}}
-      if(!picked) picked=voices.find(v=>v.lang==="en-GB")||voices.find(v=>v.lang.startsWith("en"))||voices[0];
-      if(picked) u.voice=picked;
-      u.lang=picked?.lang||"en-IN"; u.rate=0.9; u.pitch=1.1; u.volume=0.9;
-      u.onstart=()=>setSpeaking(true);
-      u.onend=()=>{setSpeaking(false);cb?.();};
-      u.onerror=()=>{setSpeaking(false);cb?.();};
-      synthRef.current!.speak(u);
-    };
-    synthRef.current.getVoices().length===0?(synthRef.current.onvoiceschanged=go):go();
-  };
-
+  const spk=(text:string,cb?:()=>void)=>{ if(!synthRef.current) return; synthRef.current.cancel(); const cleanText=text.replace(/```[\s\S]*?```/g,"").replace(/[`*#_]/g,"").slice(0,500); const u=new SpeechSynthesisUtterance(cleanText); const go=()=>{ const voices=synthRef.current!.getVoices(); const preferred=["Google UK English Female","Google US English","Microsoft Zira - English (United States)","Samantha","Karen","Veena"]; let picked:SpeechSynthesisVoice|undefined; for(const name of preferred){const found=voices.find(v=>v.name===name);if(found){picked=found;break;}} if(!picked) picked=voices.find(v=>v.lang==="en-GB")||voices.find(v=>v.lang.startsWith("en"))||voices[0]; if(picked) u.voice=picked; u.lang=picked?.lang||"en-IN"; u.rate=0.9; u.pitch=1.1; u.volume=0.9; u.onstart=()=>setSpeaking(true); u.onend=()=>{setSpeaking(false);cb?.();}; u.onerror=()=>{setSpeaking(false);cb?.();}; synthRef.current!.speak(u); }; synthRef.current.getVoices().length===0?(synthRef.current.onvoiceschanged=go):go(); };
   const spkP=(t:string):Promise<void>=>new Promise(r=>spk(t,r));
-  const speak=useCallback((t:string)=>{ if(!voiceOn) return; spk(t); },[voiceOn]);
+  const speak=useCallback((t:string)=>{if(!voiceOn)return;spk(t);},[voiceOn]);
   const stopSpk=()=>{synthRef.current?.cancel();setSpeaking(false);};
 
-  const startMic=()=>{
-    const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;
-    if(!SR){alert("Chrome use karo!");return;}
-    if(lisRef.current){lisRef.current=false;try{recRef.current?.abort();}catch{}setListening(false);setLiveText("");return;}
-    lisRef.current=true;setListening(true);setLiveText("");
-    const go=()=>{
-      if(!lisRef.current) return;
-      const r=new SR();recRef.current=r;r.continuous=false;r.interimResults=true;r.lang="en-IN";
-      r.onresult=(e:any)=>{let i="",f="";for(let j=0;j<e.results.length;j++) e.results[j].isFinal?(f+=e.results[j][0].transcript):(i+=e.results[j][0].transcript);setLiveText(i||f);if(f){const nv=inpRef.current?inpRef.current+" "+f.trim():f.trim();setInput(nv);inpRef.current=nv;setLiveText("");setTimeout(rTA,0);}};
-      r.onerror=(e:any)=>{if(e.error==="not-allowed"){alert("Mic permission do!");lisRef.current=false;setListening(false);return;}if(lisRef.current)setTimeout(go,300);};
-      r.onend=()=>lisRef.current?setTimeout(go,200):(setListening(false),setLiveText(""));
-      try{r.start();}catch{setTimeout(go,300);}
-    };
-    go();
-  };
+  const startMic=()=>{ const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition; if(!SR){alert("Chrome use karo!");return;} if(lisRef.current){lisRef.current=false;try{recRef.current?.abort();}catch{}setListening(false);setLiveText("");return;} lisRef.current=true;setListening(true);setLiveText(""); const go=()=>{ if(!lisRef.current) return; const r=new SR();recRef.current=r;r.continuous=false;r.interimResults=true;r.lang="en-IN"; r.onresult=(e:any)=>{let i="",f="";for(let j=0;j<e.results.length;j++) e.results[j].isFinal?(f+=e.results[j][0].transcript):(i+=e.results[j][0].transcript);setLiveText(i||f);if(f){const nv=inpRef.current?inpRef.current+" "+f.trim():f.trim();setInput(nv);inpRef.current=nv;setLiveText("");setTimeout(rTA,0);}}; r.onerror=(e:any)=>{if(e.error==="not-allowed"){alert("Mic permission do!");lisRef.current=false;setListening(false);return;}if(lisRef.current)setTimeout(go,300);}; r.onend=()=>lisRef.current?setTimeout(go,200):(setListening(false),setLiveText("")); try{r.start();}catch{setTimeout(go,300);} }; go(); };
 
   const stopAll=useCallback(()=>{vActiveRef.current=false;try{recRef.current?.abort();}catch{}synthRef.current?.cancel();setVs("idle");setVTranscript("");vInpRef.current="";},[]);
-  const kListen=useCallback(()=>{
-    if(!vActiveRef.current) return;
-    const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;if(!SR)return;
-    setVs("listening");setVTranscript("");vInpRef.current="";
-    const r=new SR();recRef.current=r;r.continuous=false;r.interimResults=true;r.lang="en-IN";
-    r.onresult=(e:any)=>{let i="",f="";for(let j=0;j<e.results.length;j++) e.results[j].isFinal?(f+=e.results[j][0].transcript):(i+=e.results[j][0].transcript);setVTranscript(i||f);if(f)vInpRef.current=f.trim();};
-    r.onend=()=>{if(!vActiveRef.current)return;vInpRef.current.trim()?kSend(vInpRef.current.trim()):setTimeout(kListen,500);};
-    r.onerror=(e:any)=>{if(e.error==="not-allowed"){alert("Mic permission!");stopAll();return;}if(vActiveRef.current)setTimeout(kListen,500);};
-    try{r.start();}catch{setTimeout(kListen,500);}
-  },[stopAll]);
-  const kSend=useCallback(async(t:string)=>{
-    if(!t.trim())return;
-    setVs("thinking");setVTranscript("");setVAiText("Soch rahi hun...");
-    const nh=[...vHistory,{role:"user",content:t}];setVHistory(nh);
-    try{
-      const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:"You are Kittu, a warm friendly Hinglish AI. Be natural, short replies.\n\n"+t,model,wantsCanvas:false})});
-      const d=await res.json();const rep=d.reply||"Kuch samajh nahi aaya!";
-      setVHistory(p=>[...p,{role:"assistant",content:rep}]);
-      setVAiText(rep.slice(0,120)+(rep.length>120?"...":""));setVs("speaking");
-      await spkP(rep);
-      if(vActiveRef.current){setVAiText("");kListen();}
-    }catch{setVAiText("Error!");setVs("idle");}
-  },[vHistory,model,kListen]);
+  const kListen=useCallback(()=>{ if(!vActiveRef.current) return; const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;if(!SR)return; setVs("listening");setVTranscript("");vInpRef.current=""; const r=new SR();recRef.current=r;r.continuous=false;r.interimResults=true;r.lang="en-IN"; r.onresult=(e:any)=>{let i="",f="";for(let j=0;j<e.results.length;j++) e.results[j].isFinal?(f+=e.results[j][0].transcript):(i+=e.results[j][0].transcript);setVTranscript(i||f);if(f)vInpRef.current=f.trim();}; r.onend=()=>{if(!vActiveRef.current)return;vInpRef.current.trim()?kSend(vInpRef.current.trim()):setTimeout(kListen,500);}; r.onerror=(e:any)=>{if(e.error==="not-allowed"){alert("Mic permission!");stopAll();return;}if(vActiveRef.current)setTimeout(kListen,500);}; try{r.start();}catch{setTimeout(kListen,500);} },[stopAll]);
+  const kSend=useCallback(async(t:string)=>{ if(!t.trim())return; setVs("thinking");setVTranscript("");setVAiText("Soch rahi hun..."); const nh=[...vHistory,{role:"user",content:t}];setVHistory(nh); try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:"You are Kittu, a warm friendly Hinglish AI. Be natural, short replies.\n\n"+t,model,wantsCanvas:false})}); const d=await res.json();const rep=d.reply||"Kuch samajh nahi aaya!"; setVHistory(p=>[...p,{role:"assistant",content:rep}]); setVAiText(rep.slice(0,120)+(rep.length>120?"...":""));setVs("speaking"); await spkP(rep); if(vActiveRef.current){setVAiText("");kListen();} }catch{setVAiText("Error!");setVs("idle");} },[vHistory,model,kListen]);
   const togKittu=()=>{vActiveRef.current?stopAll():(vActiveRef.current=true,kListen());};
-  const openKittu=async()=>{
-    setKittuMode(true);setVs("idle");setVTranscript("");setVAiText("");
-    if(!kGreeted){setKGreeted(true);setVs("speaking");const g="Hi! Main Kittu hoon. Kaise help karun?";setVAiText(g);await spkP(g);setVAiText("");setVs("idle");}
-  };
+  const openKittu=async()=>{ setKittuMode(true);setVs("idle");setVTranscript("");setVAiText(""); if(!kGreeted){setKGreeted(true);setVs("speaking");const g="Hi! Main Kittu hoon. Kaise help karun?";setVAiText(g);await spkP(g);setVAiText("");setVs("idle");} };
   const closeKittu=()=>{stopAll();setKittuMode(false);setVHistory([]);setKGreeted(false);};
 
   const cur=MODELS.find(m=>m.v===model)!;
@@ -342,23 +136,10 @@ export default function ChatPage(){
   const grouped=groupSessions(filtered);
   const userInitial=userName?.[0]?.toUpperCase()||"U";
 
-  // Auth check loading
-  if(!authReady) return(
-    <div style={{height:"100dvh",background:"#1c1c1e",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Inter,sans-serif"}}>
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:28,marginBottom:12}}>✦</div>
-        <div style={{color:"#636366",fontSize:"0.85rem"}}>Loading...</div>
-      </div>
-    </div>
-  );
+  if(!authReady) return(<div style={{height:"100dvh",background:"#1c1c1e",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Inter,sans-serif"}}><div style={{textAlign:"center"}}><div style={{fontSize:28,marginBottom:12}}>✦</div><div style={{color:"#636366",fontSize:"0.85rem"}}>Loading...</div></div></div>);
 
   return(
-    <div
-      style={{display:"flex",height:"100dvh",background:"#1c1c1e",color:"#e5e5e5",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",overflow:"hidden",position:"relative"}}
-      onDragOver={e=>{e.preventDefault();setDragging(true);}}
-      onDragLeave={()=>setDragging(false)}
-      onDrop={onDrop}
-    >
+    <div style={{display:"flex",height:"100dvh",background:"#1c1c1e",color:"#e5e5e5",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",overflow:"hidden",position:"relative"}} onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}>
       <style dangerouslySetInnerHTML={{__html:`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
@@ -377,6 +158,7 @@ export default function ChatPage(){
           .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:200;transform:translateX(-100%);transition:transform 0.25s cubic-bezier(0.4,0,0.2,1);width:260px !important;}
           .sidebar.open-mobile{transform:translateX(0);}
           .sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:199;backdrop-filter:blur(2px);}
+          .nav-center{display:none !important;}
         }
         .sb-top{padding:12px 10px 8px;flex-shrink:0;}
         .sb-logo{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;margin-bottom:4px;}
@@ -430,7 +212,9 @@ export default function ChatPage(){
         .nav-btn{display:flex;align-items:center;gap:4px;padding:6px 11px;border-radius:8px;background:#2c2c2e;border:1px solid #3a3a3c;font-size:0.74rem;font-weight:500;color:#8e8e93;cursor:pointer;transition:all 0.15s;font-family:inherit;}
         .nav-btn:hover{background:#38383a;color:#e5e5e5;}
         .nav-btn.on{background:#e5e5e5;color:#1c1c1e;border-color:#e5e5e5;}
-        .picker{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:200;min-width:270px;background:#2c2c2e;border:1px solid #3a3a3c;border-radius:14px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,0.5);animation:fadeIn 0.15s ease;}
+        /* ─── MODEL PICKER — opens UPWARD from input box ─── */
+        .picker-wrap{position:relative;}
+        .picker{position:absolute;bottom:calc(100% + 8px);left:0;z-index:400;min-width:260px;background:#2c2c2e;border:1px solid #3a3a3c;border-radius:14px;overflow:hidden;box-shadow:0 -16px 48px rgba(0,0,0,0.7);animation:fadeIn 0.15s ease;}
         .picker-title{padding:10px 14px 8px;font-size:0.6rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#636366;border-bottom:1px solid #3a3a3c;}
         .picker-opt{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;transition:background 0.1s;border:none;background:transparent;width:100%;text-align:left;font-family:inherit;}
         .picker-opt:hover{background:#38383a;}
@@ -461,7 +245,7 @@ export default function ChatPage(){
         .msg-a-head{display:flex;align-items:center;gap:8px;}
         .msg-a-av{width:24px;height:24px;border-radius:7px;background:#2c2c2e;border:1px solid #3a3a3c;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;}
         .msg-a-name{font-size:0.72rem;font-weight:600;color:#636366;}
-        .md-body{font-size:0.94rem;line-height:1.88;color:#d1d1d6;font-family:'Inter',-apple-system,sans-serif;}
+        .md-body{font-size:0.94rem;line-height:1.88;color:#d1d1d6;}
         .md-body p{margin:0 0 14px;color:#c7c7cc;font-size:0.93rem;line-height:1.82;}
         .md-body p:last-child{margin-bottom:0;}
         .md-body h1,.md-body h2{font-size:1rem;font-weight:700;color:#e5e5e5;margin:20px 0 8px;}
@@ -495,19 +279,19 @@ export default function ChatPage(){
         .pf-rm{background:none;border:none;color:#636366;cursor:pointer;font-size:12px;padding:0 0 0 2px;font-family:inherit;}
         .pf-rm:hover{color:#ff453a;}
         .live{background:rgba(255,69,58,0.1);border:1px solid rgba(255,69,58,0.3);border-radius:8px;padding:6px 12px;margin-bottom:6px;color:#ff453a;font-size:0.75rem;font-style:italic;max-width:760px;margin-left:auto;margin-right:auto;}
-        .input-box{max-width:760px;margin:0 auto;background:#2c2c2e;border:1px solid #3a3a3c;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.25);overflow:hidden;transition:border-color 0.2s;}
+        .input-box{max-width:760px;margin:0 auto;background:#2c2c2e;border:1px solid #3a3a3c;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.25);overflow:visible;transition:border-color 0.2s;}
         .input-box:focus-within{border-color:#636366;}
-        .input-ta{display:block;width:100%;min-height:52px;max-height:160px;padding:14px 18px 8px;background:transparent;border:none;outline:none;color:#e5e5e5;font-size:0.93rem;line-height:1.6;resize:none;font-family:'Inter',sans-serif;}
+        .input-ta{display:block;width:100%;min-height:52px;max-height:160px;padding:14px 18px 8px;background:transparent;border:none;outline:none;color:#e5e5e5;font-size:0.93rem;line-height:1.6;resize:none;font-family:'Inter',sans-serif;border-radius:16px 16px 0 0;}
         .input-ta::placeholder{color:#48484a;}
         .input-foot{display:flex;align-items:center;justify-content:space-between;padding:7px 12px 10px;}
-        .inp-model{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:99px;background:#38383a;border:1px solid #48484a;font-size:0.72rem;font-weight:500;color:#aeaeb2;cursor:pointer;transition:all 0.15s;font-family:inherit;}
-        .inp-model:hover{background:#48484a;color:#e5e5e5;}
-        .inp-dot{width:6px;height:6px;border-radius:50%;background:#30d158;flex-shrink:0;}
+        .inp-model{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#38383a;border:1px solid #48484a;font-size:0.78rem;font-weight:600;color:#e5e5e5;cursor:pointer;transition:all 0.15s;font-family:inherit;white-space:nowrap;}
+        .inp-model:hover{background:#48484a;border-color:#636366;}
+        .inp-dot{width:7px;height:7px;border-radius:50%;background:#30d158;flex-shrink:0;}
         .inp-right{display:flex;align-items:center;gap:5px;}
-        .abt{width:32px;height:32px;border-radius:9px;background:#38383a;border:1px solid #48484a;display:flex;align-items:center;justify-content:center;font-size:14px;color:#8e8e93;transition:all 0.15s;cursor:pointer;}
+        .abt{width:32px;height:32px;border-radius:9px;background:#38383a;border:1px solid #48484a;display:flex;align-items:center;justify-content:center;font-size:14px;color:#8e8e93;transition:all 0.15s;cursor:pointer;border:1px solid #48484a;}
         .abt:hover{background:#48484a;color:#e5e5e5;}
         .abt.on{background:rgba(255,69,58,0.15);border-color:rgba(255,69,58,0.4);color:#ff453a;}
-        .send{width:36px;height:36px;border-radius:10px;background:#e5e5e5;color:#1c1c1e;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;cursor:pointer;transition:all 0.18s;}
+        .send{width:36px;height:36px;border-radius:10px;background:#e5e5e5;color:#1c1c1e;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;cursor:pointer;transition:all 0.18s;border:none;}
         .send:hover{background:#fff;transform:scale(1.05);}
         .send:disabled{opacity:0.25;cursor:not-allowed;transform:none;}
         .send-spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(28,28,30,0.3);border-top-color:#1c1c1e;animation:spin 0.7s linear infinite;}
@@ -521,22 +305,14 @@ export default function ChatPage(){
         .k-ctrl:hover{background:#38383a;color:#e5e5e5;}
         .k-mic{width:64px;height:64px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:26px;border:2px solid #3a3a3c;background:#2c2c2e;transition:all 0.25s;font-family:inherit;}
         .k-mic.active{border-color:#e5e5e5;box-shadow:0 0 24px rgba(229,229,229,0.1);background:#38383a;}
-        @media(max-width:640px){.suggs{grid-template-columns:repeat(2,1fr);}.nav-center{display:none;}.nav-btn span{display:none;}}
+        @media(max-width:640px){.suggs{grid-template-columns:repeat(2,1fr);}}
         @media(max-width:400px){.suggs{grid-template-columns:1fr;}}
       `}}/>
 
       <input ref={fileRef} type="file" multiple accept=".pdf,.xlsx,.xls,.csv,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.txt" style={{display:"none"}} onChange={onFI}/>
       {sidebarOpen&&<div className="sidebar-overlay" onClick={()=>setSidebarOpen(false)}/>}
 
-      {dragging&&(
-        <div className="drag-ov">
-          <div className="drag-box">
-            <div style={{fontSize:"3rem",marginBottom:12}}>📂</div>
-            <div style={{fontSize:"1.1rem",fontWeight:700,color:"#e5e5e5"}}>Drop files here</div>
-            <div style={{fontSize:"0.82rem",color:"#636366",marginTop:6}}>PDF, Excel, Word, Images supported</div>
-          </div>
-        </div>
-      )}
+      {dragging&&(<div className="drag-ov"><div className="drag-box"><div style={{fontSize:"3rem",marginBottom:12}}>📂</div><div style={{fontSize:"1.1rem",fontWeight:700,color:"#e5e5e5"}}>Drop files here</div><div style={{fontSize:"0.82rem",color:"#636366",marginTop:6}}>PDF, Excel, Word, Images supported</div></div></div>)}
 
       {kittuMode&&(
         <div className="kittu">
@@ -546,19 +322,12 @@ export default function ChatPage(){
             <div className="k-sub">Powered by {cur.p}</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:20}}>
-            <div style={{width:180,height:180,borderRadius:"50%",border:"2px solid #3a3a3c",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"4rem",cursor:"pointer",background:"#242426"}} onClick={togKittu}>
-              {vs==="listening"?"🎙":vs==="thinking"?"⏳":vs==="speaking"?"🔊":"🌸"}
-            </div>
-            <div style={{textAlign:"center",minHeight:52}}>
-              {vTranscript&&vs==="listening"&&<div className="k-transcript">"{vTranscript}"</div>}
-              <div className="k-status">{vsLabel[vs]}</div>
-            </div>
+            <div style={{width:180,height:180,borderRadius:"50%",border:"2px solid #3a3a3c",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"4rem",cursor:"pointer",background:"#242426"}} onClick={togKittu}>{vs==="listening"?"🎙":vs==="thinking"?"⏳":vs==="speaking"?"🔊":"🌸"}</div>
+            <div style={{textAlign:"center",minHeight:52}}>{vTranscript&&vs==="listening"&&<div className="k-transcript">"{vTranscript}"</div>}<div className="k-status">{vsLabel[vs]}</div></div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:24}}>
             <button className="k-ctrl" onClick={()=>{setVHistory([]);setVAiText("");stopAll();setVs("idle");}}>↺</button>
-            <button className={`k-mic ${vActiveRef.current?"active":""}`} onClick={togKittu}>
-              {vs==="idle"?"🎙":vs==="listening"?"🎙":vs==="thinking"?"⏳":"🔊"}
-            </button>
+            <button className={`k-mic ${vActiveRef.current?"active":""}`} onClick={togKittu}>{vs==="idle"?"🎙":vs==="listening"?"🎙":vs==="thinking"?"⏳":"🔊"}</button>
             <button className="k-ctrl" onClick={closeKittu}>✕</button>
           </div>
         </div>
@@ -567,76 +336,25 @@ export default function ChatPage(){
       <aside id="sidebar" className={`sidebar ${sidebarOpen?"open-mobile":""}`}>
         <div className="sidebar-inner">
           <div className="sb-top">
-            <div className="sb-logo">
-              <div className="sb-logo-av">✦</div>
-              <div>
-                <div className="sb-logo-name">Universal AI</div>
-                <div className="sb-logo-plan">Free plan</div>
-              </div>
-            </div>
-            <button className="sb-new" onClick={startNewChat}>
-              <div className="sb-new-icon">✏️</div>New chat
-            </button>
-            <div className="sb-search">
-              <span className="sb-search-icon">🔍</span>
-              <input placeholder="Search chats..." value={searchQ} onChange={e=>setSearchQ(e.target.value)}/>
-            </div>
+            <div className="sb-logo"><div className="sb-logo-av">✦</div><div><div className="sb-logo-name">Universal AI</div><div className="sb-logo-plan">Free plan</div></div></div>
+            <button className="sb-new" onClick={startNewChat}><div className="sb-new-icon">✏️</div>New chat</button>
+            <div className="sb-search"><span className="sb-search-icon">🔍</span><input placeholder="Search chats..." value={searchQ} onChange={e=>setSearchQ(e.target.value)}/></div>
           </div>
           <div className="sb-list">
-            {sessions.length===0?(
-              <div className="sb-empty">
-                <div className="sb-empty-icon">💬</div>
-                <div className="sb-empty-text">Abhi koi chat nahi hai.<br/>Kuch pucho, history yahan save hogi!</div>
-              </div>
-            ):filtered.length===0?(
-              <div className="sb-empty"><div className="sb-empty-text">"{searchQ}" nahi mila.</div></div>
-            ):(
-              <>
-                {grouped.today.length>0&&<><div className="sb-group-label">Today</div>{grouped.today.map(s=>(
-                  <div key={s.id} className={`sb-item ${activeId===s.id?"active":""}`} onClick={()=>loadSession(s)}>
-                    <span className="sb-item-title">{s.title}</span>
-                    <button className="sb-del" onClick={e=>deleteSession(s.id,e)}>🗑</button>
-                  </div>
-                ))}</>}
-                {grouped.yesterday.length>0&&<><div className="sb-group-label">Yesterday</div>{grouped.yesterday.map(s=>(
-                  <div key={s.id} className={`sb-item ${activeId===s.id?"active":""}`} onClick={()=>loadSession(s)}>
-                    <span className="sb-item-title">{s.title}</span>
-                    <button className="sb-del" onClick={e=>deleteSession(s.id,e)}>🗑</button>
-                  </div>
-                ))}</>}
-                {grouped.week.length>0&&<><div className="sb-group-label">Last 7 days</div>{grouped.week.map(s=>(
-                  <div key={s.id} className={`sb-item ${activeId===s.id?"active":""}`} onClick={()=>loadSession(s)}>
-                    <span className="sb-item-title">{s.title}</span>
-                    <button className="sb-del" onClick={e=>deleteSession(s.id,e)}>🗑</button>
-                  </div>
-                ))}</>}
-                {grouped.older.length>0&&<><div className="sb-group-label">Older</div>{grouped.older.map(s=>(
-                  <div key={s.id} className={`sb-item ${activeId===s.id?"active":""}`} onClick={()=>loadSession(s)}>
-                    <span className="sb-item-title">{s.title}</span>
-                    <button className="sb-del" onClick={e=>deleteSession(s.id,e)}>🗑</button>
-                  </div>
-                ))}</>}
-              </>
-            )}
+            {sessions.length===0?(<div className="sb-empty"><div className="sb-empty-icon">💬</div><div className="sb-empty-text">Abhi koi chat nahi hai.<br/>Kuch pucho, history yahan save hogi!</div></div>)
+            :filtered.length===0?(<div className="sb-empty"><div className="sb-empty-text">"{searchQ}" nahi mila.</div></div>)
+            :(<>
+              {grouped.today.length>0&&<><div className="sb-group-label">Today</div>{grouped.today.map(s=>(<div key={s.id} className={`sb-item ${activeId===s.id?"active":""}`} onClick={()=>loadSession(s)}><span className="sb-item-title">{s.title}</span><button className="sb-del" onClick={e=>deleteSession(s.id,e)}>🗑</button></div>))}</>}
+              {grouped.yesterday.length>0&&<><div className="sb-group-label">Yesterday</div>{grouped.yesterday.map(s=>(<div key={s.id} className={`sb-item ${activeId===s.id?"active":""}`} onClick={()=>loadSession(s)}><span className="sb-item-title">{s.title}</span><button className="sb-del" onClick={e=>deleteSession(s.id,e)}>🗑</button></div>))}</>}
+              {grouped.week.length>0&&<><div className="sb-group-label">Last 7 days</div>{grouped.week.map(s=>(<div key={s.id} className={`sb-item ${activeId===s.id?"active":""}`} onClick={()=>loadSession(s)}><span className="sb-item-title">{s.title}</span><button className="sb-del" onClick={e=>deleteSession(s.id,e)}>🗑</button></div>))}</>}
+              {grouped.older.length>0&&<><div className="sb-group-label">Older</div>{grouped.older.map(s=>(<div key={s.id} className={`sb-item ${activeId===s.id?"active":""}`} onClick={()=>loadSession(s)}><span className="sb-item-title">{s.title}</span><button className="sb-del" onClick={e=>deleteSession(s.id,e)}>🗑</button></div>))}</>}
+            </>)}
           </div>
           <div className="sb-bottom" ref={profileRef}>
-            {showProfile&&(
-              <div className="profile-menu">
-                <div className="pm-user">
-                  <div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#ff9500,#ff453a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",marginBottom:8}}>{userInitial}</div>
-                  <div className="pm-name">{userName}</div>
-                  <div className="pm-handle">{userEmail}</div>
-                </div>
-                <hr className="pm-sep"/>
-                <button className="pm-item danger" onClick={handleLogout}>→ Log out</button>
-              </div>
-            )}
+            {showProfile&&(<div className="profile-menu"><div className="pm-user"><div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#ff9500,#ff453a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",marginBottom:8}}>{userInitial}</div><div className="pm-name">{userName}</div><div className="pm-handle">{userEmail}</div></div><hr className="pm-sep"/><button className="pm-item danger" onClick={handleLogout}>→ Log out</button></div>)}
             <div className="sb-profile" onClick={()=>setShowProfile(!showProfile)}>
               <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#ff9500,#ff453a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",flexShrink:0}}>{userInitial}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:"0.82rem",fontWeight:500,color:"#e5e5e5",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{userName}</div>
-                <div style={{fontSize:"0.68rem",color:"#636366"}}>Free</div>
-              </div>
+              <div style={{flex:1,minWidth:0}}><div style={{fontSize:"0.82rem",fontWeight:500,color:"#e5e5e5",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{userName}</div><div style={{fontSize:"0.68rem",color:"#636366"}}>Free</div></div>
               <span style={{marginLeft:"auto",color:"#636366",fontSize:12}}>{showProfile?"▼":"▲"}</span>
             </div>
           </div>
@@ -649,27 +367,15 @@ export default function ChatPage(){
             <button id="sidebar-toggle" className="nav-toggle" onClick={()=>setSidebarOpen(!sidebarOpen)}>{sidebarOpen?"✕":"☰"}</button>
             <a href="/" className="nav-logo"><div className="nav-logo-dot"/>Universal AI</a>
           </div>
-          <div className="nav-center" ref={pickRef}>
+          {/* Desktop only — hidden on mobile via CSS */}
+          <div className="nav-center">
             <button className="nav-pill" onClick={()=>setShowPick(v=>!v)}>
-              <div className="nav-dot"/>{cur.i} {cur.p} {cur.l}
+              <div className="nav-dot"/>{cur.i} {cur.p} · {cur.l}
               <span style={{fontSize:"0.6rem",color:"#636366"}}>▾</span>
             </button>
-            {showPick&&(
-              <div className="picker">
-                <div className="picker-title">Choose model</div>
-                {MODELS.map(m=>(
-                  <button key={m.v} className={`picker-opt ${model===m.v?"on":""}`} onClick={()=>{setModel(m.v);setShowPick(false);}}>
-                    <div className="picker-icon">{m.i}</div>
-                    <div><div className="picker-name">{m.p}</div><div className="picker-sub">{m.l}</div></div>
-                    <div className="picker-badge">{m.tag}</div>
-                    {model===m.v&&<span style={{color:"#30d158",fontSize:14,marginLeft:4}}>✓</span>}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
           <div className="nav-right">
-            <button className={`nav-btn ${voiceOn?"on":""}`} onClick={()=>{setVoiceOn(!voiceOn);stopSpk();}}>{voiceOn?"🔊":"🔇"} <span>{voiceOn?"On":"Off"}</span></button>
+            <button className={`nav-btn ${voiceOn?"on":""}`} onClick={()=>{setVoiceOn(!voiceOn);stopSpk();}}>{voiceOn?"🔊":"🔇"} <span>Voice</span></button>
             <button className="nav-btn" onClick={()=>fileRef.current?.click()}>📎 <span>Attach</span></button>
           </div>
         </header>
@@ -680,15 +386,7 @@ export default function ChatPage(){
               <div className="empty-icon">✦</div>
               <h1 className="empty-h">Kya dhundh rahe ho aaj?</h1>
               <p className="empty-sub"><span className="sub-dot"/>{cur.i} {cur.p} ready hai</p>
-              <div className="suggs">
-                {SUGG.map((s,i)=>(
-                  <button key={i} className="sug" onClick={()=>send(s.text)}>
-                    <span className="sug-icon">{s.icon}</span>
-                    <span className="sug-cat">{s.cat}</span>
-                    <span className="sug-txt">{s.text}</span>
-                  </button>
-                ))}
-              </div>
+              <div className="suggs">{SUGG.map((s,i)=>(<button key={i} className="sug" onClick={()=>send(s.text)}><span className="sug-icon">{s.icon}</span><span className="sug-cat">{s.cat}</span><span className="sug-txt">{s.text}</span></button>))}</div>
               <div className="drop-hint">📂 File ya image drop karo · "canvas" bol ke diagram banao</div>
             </div>
           ):(
@@ -697,71 +395,35 @@ export default function ChatPage(){
                 const mm=MODELS.find(x=>x.v===m.model)??cur;
                 const csv=m.role==="assistant"?extractCSV(m.content):null;
                 const clean=m.content.replace(/```csv[\s\S]*?```/g,"").replace(/```canvas[\s\S]*?```/g,"").trim();
-                return(
-                  <div key={i} className="msg-row">
-                    {m.role==="user"?(
-                      <div style={{display:"flex",justifyContent:"flex-end"}}>
-                        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,maxWidth:"72%"}}>
-                          {m.files&&m.files.length>0&&(
-                            <div>{m.files.map((f,fi)=>
-                              f.type.startsWith("image/")
-                                ?<img key={fi} src={f.dataUrl} alt={f.name} className="img-prev"/>
-                                :<div key={fi} className="fchip">{fIcon(f.type)} {f.name} <span style={{color:"#636366"}}>({fmtB(f.size)})</span></div>
-                            )}</div>
-                          )}
-                          {clean&&<div className="msg-u">{clean}</div>}
-                        </div>
+                return(<div key={i} className="msg-row">
+                  {m.role==="user"?(
+                    <div style={{display:"flex",justifyContent:"flex-end"}}>
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,maxWidth:"72%"}}>
+                        {m.files&&m.files.length>0&&(<div>{m.files.map((f,fi)=>f.type.startsWith("image/")?<img key={fi} src={f.dataUrl} alt={f.name} className="img-prev"/>:<div key={fi} className="fchip">{fIcon(f.type)} {f.name} <span style={{color:"#636366"}}>({fmtB(f.size)})</span></div>)}</div>)}
+                        {clean&&<div className="msg-u">{clean}</div>}
                       </div>
-                    ):(
-                      <div className="msg-a-wrap">
-                        <div className="msg-a-head">
-                          <div className="msg-a-av">{mm.i}</div>
-                          <span className="msg-a-name">{mm.p}</span>
-                        </div>
-                        <div className="md-body">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{clean}</ReactMarkdown>
-                          {csv&&<div style={{marginTop:10}} dangerouslySetInnerHTML={{__html:csvHtml(csv)}}/>}
-                          {m.shapes&&!closedC.has(i)&&(
-                            <MiniCanvas shapes={m.shapes} onClose={()=>setClosedC(p=>new Set(Array.from(p).concat(i)))}/>
-                          )}
-                        </div>
-                        <div className="acts">
-                          <button className="act" onClick={()=>speaking?stopSpk():spk(m.content)}>{speaking?"⏹ Stop":"🔊 Read"}</button>
-                          {csv&&<button className="act" onClick={()=>dlCSV(csv)}>📥 Excel</button>}
-                          <button className="act" onClick={()=>navigator.clipboard.writeText(m.content)}>📋 Copy</button>
-                        </div>
+                    </div>
+                  ):(
+                    <div className="msg-a-wrap">
+                      <div className="msg-a-head"><div className="msg-a-av">{mm.i}</div><span className="msg-a-name">{mm.p}</span></div>
+                      <div className="md-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{clean}</ReactMarkdown>{csv&&<div style={{marginTop:10}} dangerouslySetInnerHTML={{__html:csvHtml(csv)}}/>}{m.shapes&&!closedC.has(i)&&(<MiniCanvas shapes={m.shapes} onClose={()=>setClosedC(p=>new Set(Array.from(p).concat(i)))}/>)}</div>
+                      <div className="acts">
+                        <button className="act" onClick={()=>speaking?stopSpk():spk(m.content)}>{speaking?"⏹ Stop":"🔊 Read"}</button>
+                        {csv&&<button className="act" onClick={()=>dlCSV(csv)}>📥 Excel</button>}
+                        <button className="act" onClick={()=>navigator.clipboard.writeText(m.content)}>📋 Copy</button>
                       </div>
-                    )}
-                  </div>
-                );
+                    </div>
+                  )}
+                </div>);
               })}
-              {loading&&(
-                <div className="typing-wrap">
-                  <div className="msg-a-head"><div className="msg-a-av">{cur.i}</div><span className="msg-a-name">{cur.p}</span></div>
-                  <div className="typing-bub"><span/><span/><span/></div>
-                </div>
-              )}
+              {loading&&(<div className="typing-wrap"><div className="msg-a-head"><div className="msg-a-av">{cur.i}</div><span className="msg-a-name">{cur.p}</span></div><div className="typing-bub"><span/><span/><span/></div></div>)}
               <div ref={botRef}/>
             </div>
           )}
         </div>
 
         <div className="input-zone">
-          {files.length>0&&(
-            <div className="pf-list">
-              {files.map((f,i)=>(
-                <div key={i} className="pf">
-                  {f.type.startsWith("image/")
-                    ?<img src={f.dataUrl} alt={f.name} className="pf-img"/>
-                    :<span style={{fontSize:16}}>{fIcon(f.type)}</span>
-                  }
-                  <span style={{fontWeight:500}}>{f.name}</span>
-                  <span style={{color:"#636366",fontSize:"0.65rem"}}>({fmtB(f.size)})</span>
-                  <button className="pf-rm" onClick={()=>rmFile(i)}>✕</button>
-                </div>
-              ))}
-            </div>
-          )}
+          {files.length>0&&(<div className="pf-list">{files.map((f,i)=>(<div key={i} className="pf">{f.type.startsWith("image/")?<img src={f.dataUrl} alt={f.name} className="pf-img"/>:<span style={{fontSize:16}}>{fIcon(f.type)}</span>}<span style={{fontWeight:500}}>{f.name}</span><span style={{color:"#636366",fontSize:"0.65rem"}}>({fmtB(f.size)})</span><button className="pf-rm" onClick={()=>rmFile(i)}>✕</button></div>))}</div>)}
           {liveText&&<div className="live">🎙 {liveText}</div>}
           <div className="input-box">
             <textarea ref={taRef} className="input-ta"
@@ -771,10 +433,27 @@ export default function ChatPage(){
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
             />
             <div className="input-foot">
-              <button className="inp-model" onClick={()=>setShowPick(v=>!v)}>
-                {cur.i} <div className="inp-dot"/> {cur.p}
-                <span style={{fontSize:"0.6rem",color:"#636366",marginLeft:2}}>▾</span>
-              </button>
+              {/* ✅ MODEL SELECTOR — always visible on ALL screen sizes */}
+              <div className="picker-wrap" ref={pickRef}>
+                <button className="inp-model" onClick={()=>setShowPick(v=>!v)}>
+                  <div className="inp-dot"/>
+                  {cur.i}&nbsp;{cur.p}
+                  <span style={{fontSize:"0.65rem",color:"#8e8e93",marginLeft:2}}>▾</span>
+                </button>
+                {showPick&&(
+                  <div className="picker">
+                    <div className="picker-title">Choose model</div>
+                    {MODELS.map(m=>(
+                      <button key={m.v} className={`picker-opt ${model===m.v?"on":""}`} onClick={()=>{setModel(m.v);setShowPick(false);}}>
+                        <div className="picker-icon">{m.i}</div>
+                        <div><div className="picker-name">{m.p}</div><div className="picker-sub">{m.l}</div></div>
+                        <div className="picker-badge">{m.tag}</div>
+                        {model===m.v&&<span style={{color:"#30d158",fontSize:14,marginLeft:4}}>✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="inp-right">
                 <button className="abt" onClick={()=>fileRef.current?.click()} title="Attach">📎</button>
                 <button className="abt" onClick={openKittu} title="Kittu">🌸</button>
@@ -785,7 +464,7 @@ export default function ChatPage(){
               </div>
             </div>
           </div>
-          <p className="hint">Enter to send · Shift+Enter for new line · ☰ sidebar mein chat history</p>
+          <p className="hint">Enter to send · Shift+Enter for new line</p>
         </div>
       </div>
     </div>
