@@ -83,7 +83,7 @@ export default function ChatPage(){
   const taRef     = useRef<HTMLTextAreaElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
   const recRef    = useRef<any>(null);
-  const synthRef  = useRef<SpeechSynthesis|null>(null);
+  const audioRef  = useRef<HTMLAudioElement|null>(null); // ← ElevenLabs audio
   const pickRef   = useRef<HTMLDivElement>(null);
   const lisRef    = useRef(false);
   const inpRef    = useRef("");
@@ -100,7 +100,6 @@ export default function ChatPage(){
 
   useEffect(()=>{inpRef.current=input;},[input]);
   useEffect(()=>{botRef.current?.scrollIntoView({behavior:"smooth"});},[msgs,loading]);
-  useEffect(()=>{if(typeof window!=="undefined"){synthRef.current=window.speechSynthesis;window.speechSynthesis.getVoices();}},[]);
   useEffect(()=>{ const fn=(e:MouseEvent)=>{ if(pickRef.current&&!pickRef.current.contains(e.target as Node))setShowPick(false); if(profileRef.current&&!profileRef.current.contains(e.target as Node))setShowProfile(false); }; document.addEventListener("mousedown",fn); return()=>document.removeEventListener("mousedown",fn); },[]);
   useEffect(()=>{ const fn=(e:MouseEvent)=>{const sb=document.getElementById("sidebar");if(sidebarOpen&&sb&&!sb.contains(e.target as Node)){const tog=document.getElementById("sidebar-toggle");if(tog&&tog.contains(e.target as Node))return;setSidebarOpen(false);}};document.addEventListener("mousedown",fn);return()=>document.removeEventListener("mousedown",fn); },[sidebarOpen]);
 
@@ -114,16 +113,44 @@ export default function ChatPage(){
   const loadSession=(session:ChatSession)=>{if(msgs.length>0&&activeId!==session.id)saveCurrentSession(msgs,model,activeId);setMsgs(session.messages);setModel(session.model);setActiveId(session.id);setClosedC(new Set());if(window.innerWidth<768)setSidebarOpen(false);};
   const deleteSession=(id:string,e:React.MouseEvent)=>{e.stopPropagation();setSessions(prev=>prev.filter(s=>s.id!==id));if(activeId===id){setMsgs([]);setActiveId(null);}};
 
-  const send=async(ov?:string)=>{ const text=(ov??input).trim(); if((!text&&files.length===0)||loading) return; const imgFiles=files.filter(f=>f.type.startsWith("image/")); const otherFiles=files.filter(f=>!f.type.startsWith("image/")); const wc=isCanvas(text); let ctx=""; if(otherFiles.length>0) ctx="\n\n[Files attached]\n"+otherFiles.map(f=>`${f.name}:\n${(f.text||"").slice(0,5000)}`).join("\n\n"); if(imgFiles.length>0&&!wc) ctx+="\n\nAnalyze the attached image thoroughly."; const um:Msg={role:"user",content:text,files:files.length>0?[...files]:undefined}; const newMsgs=[...msgs,um]; setMsgs(newMsgs); setInput(""); inpRef.current=""; setFiles([]); if(taRef.current) taRef.current.style.height="auto"; setLoading(true); try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text+ctx,model,wantsCanvas:wc,images:imgFiles.map(f=>f.dataUrl)})}); const data=await res.json(); const reply=data.reply||"No reply received."; const shapes=wc?extractShapes(reply)||undefined:undefined; const finalMsgs=[...newMsgs,{role:"assistant" as const,content:reply,model,shapes}]; setMsgs(finalMsgs); const savedId=saveCurrentSession(finalMsgs,model,activeId); if(savedId&&!activeId) setActiveId(savedId); if(voiceOn) spk(reply.slice(0,400)); }catch{setMsgs(prev=>[...prev,{role:"assistant",content:"Network error. Try again.",model}]);} setLoading(false); };
+  const send=async(ov?:string)=>{ const text=(ov??input).trim(); if((!text&&files.length===0)||loading) return; const imgFiles=files.filter(f=>f.type.startsWith("image/")); const otherFiles=files.filter(f=>!f.type.startsWith("image/")); const wc=isCanvas(text); let ctx=""; if(otherFiles.length>0) ctx="\n\n[Files attached]\n"+otherFiles.map(f=>`${f.name}:\n${(f.text||"").slice(0,5000)}`).join("\n\n"); if(imgFiles.length>0&&!wc) ctx+="\n\nAnalyze the attached image thoroughly."; const um:Msg={role:"user",content:text,files:files.length>0?[...files]:undefined}; const newMsgs=[...msgs,um]; setMsgs(newMsgs); setInput(""); inpRef.current=""; setFiles([]); if(taRef.current) taRef.current.style.height="auto"; setLoading(true); try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text+ctx,model,wantsCanvas:wc,images:imgFiles.map(f=>f.dataUrl)})}); const data=await res.json(); const reply=data.reply||"No reply received."; const shapes=wc?extractShapes(reply)||undefined:undefined; const finalMsgs=[...newMsgs,{role:"assistant" as const,content:reply,model,shapes}]; setMsgs(finalMsgs); const savedId=saveCurrentSession(finalMsgs,model,activeId); if(savedId&&!activeId) setActiveId(savedId); if(voiceOn) spk(reply); }catch{setMsgs(prev=>[...prev,{role:"assistant",content:"Network error. Try again.",model}]);} setLoading(false); };
 
-  const spk=(text:string,cb?:()=>void)=>{ if(!synthRef.current) return; synthRef.current.cancel(); const cleanText=text.replace(/```[\s\S]*?```/g,"").replace(/[`*#_]/g,"").slice(0,500); const u=new SpeechSynthesisUtterance(cleanText); const go=()=>{ const voices=synthRef.current!.getVoices(); const preferred=["Google UK English Female","Google US English","Microsoft Zira - English (United States)","Samantha","Karen","Veena"]; let picked:SpeechSynthesisVoice|undefined; for(const name of preferred){const found=voices.find(v=>v.name===name);if(found){picked=found;break;}} if(!picked) picked=voices.find(v=>v.lang==="en-GB")||voices.find(v=>v.lang.startsWith("en"))||voices[0]; if(picked) u.voice=picked; u.lang=picked?.lang||"en-IN"; u.rate=0.9; u.pitch=1.1; u.volume=0.9; u.onstart=()=>setSpeaking(true); u.onend=()=>{setSpeaking(false);cb?.();}; u.onerror=()=>{setSpeaking(false);cb?.();}; synthRef.current!.speak(u); }; synthRef.current.getVoices().length===0?(synthRef.current.onvoiceschanged=go):go(); };
-  const spkP=(t:string):Promise<void>=>new Promise(r=>spk(t,r));
-  const speak=useCallback((t:string)=>{if(!voiceOn)return;spk(t);},[voiceOn]);
-  const stopSpk=()=>{synthRef.current?.cancel();setSpeaking(false);};
+  // ── ElevenLabs real voice ──────────────────────────────────────
+  const spk = (text: string, cb?: () => void) => {
+    if (!text.trim()) { cb?.(); return; }
+    // Stop any currently playing audio
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    const clean = text
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/`[^`]*`/g, "")
+      .replace(/[*#_~>\[\]]/g, "")
+      .replace(/https?:\/\/\S+/g, "")
+      .slice(0, 500);
+    setSpeaking(true);
+    fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: clean }),
+    }).then(async (res) => {
+      if (!res.ok) throw new Error("TTS failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url); audioRef.current = null; cb?.(); };
+      audio.onerror = () => { setSpeaking(false); URL.revokeObjectURL(url); audioRef.current = null; cb?.(); };
+      audio.play();
+    }).catch(() => { setSpeaking(false); cb?.(); });
+  };
+
+  const spkP = (t: string): Promise<void> => new Promise(r => spk(t, r));
+  const speak = useCallback((t: string) => { if (!voiceOn) return; spk(t); }, [voiceOn]);
+  const stopSpk = () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } setSpeaking(false); };
+  // ──────────────────────────────────────────────────────────────
 
   const startMic=()=>{ const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition; if(!SR){alert("Chrome use karo!");return;} if(lisRef.current){lisRef.current=false;try{recRef.current?.abort();}catch{}setListening(false);setLiveText("");return;} lisRef.current=true;setListening(true);setLiveText(""); const go=()=>{ if(!lisRef.current) return; const r=new SR();recRef.current=r;r.continuous=false;r.interimResults=true;r.lang="en-IN"; r.onresult=(e:any)=>{let i="",f="";for(let j=0;j<e.results.length;j++) e.results[j].isFinal?(f+=e.results[j][0].transcript):(i+=e.results[j][0].transcript);setLiveText(i||f);if(f){const nv=inpRef.current?inpRef.current+" "+f.trim():f.trim();setInput(nv);inpRef.current=nv;setLiveText("");setTimeout(rTA,0);}}; r.onerror=(e:any)=>{if(e.error==="not-allowed"){alert("Mic permission do!");lisRef.current=false;setListening(false);return;}if(lisRef.current)setTimeout(go,300);}; r.onend=()=>lisRef.current?setTimeout(go,200):(setListening(false),setLiveText("")); try{r.start();}catch{setTimeout(go,300);} }; go(); };
 
-  const stopAll=useCallback(()=>{vActiveRef.current=false;try{recRef.current?.abort();}catch{}synthRef.current?.cancel();setVs("idle");setVTranscript("");vInpRef.current="";},[]);
+  const stopAll=useCallback(()=>{vActiveRef.current=false;try{recRef.current?.abort();}catch{}if(audioRef.current){audioRef.current.pause();audioRef.current=null;}setVs("idle");setVTranscript("");vInpRef.current="";},[]);
   const kListen=useCallback(()=>{ if(!vActiveRef.current) return; const SR=(window as any).SpeechRecognition||(window as any).webkitSpeechRecognition;if(!SR)return; setVs("listening");setVTranscript("");vInpRef.current=""; const r=new SR();recRef.current=r;r.continuous=false;r.interimResults=true;r.lang="en-IN"; r.onresult=(e:any)=>{let i="",f="";for(let j=0;j<e.results.length;j++) e.results[j].isFinal?(f+=e.results[j][0].transcript):(i+=e.results[j][0].transcript);setVTranscript(i||f);if(f)vInpRef.current=f.trim();}; r.onend=()=>{if(!vActiveRef.current)return;vInpRef.current.trim()?kSend(vInpRef.current.trim()):setTimeout(kListen,500);}; r.onerror=(e:any)=>{if(e.error==="not-allowed"){alert("Mic permission!");stopAll();return;}if(vActiveRef.current)setTimeout(kListen,500);}; try{r.start();}catch{setTimeout(kListen,500);} },[stopAll]);
   const kSend=useCallback(async(t:string)=>{ if(!t.trim())return; setVs("thinking");setVTranscript("");setVAiText("Soch rahi hun..."); const nh=[...vHistory,{role:"user",content:t}];setVHistory(nh); try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:"You are Kittu, a warm friendly Hinglish AI. Be natural, short replies.\n\n"+t,model,wantsCanvas:false})}); const d=await res.json();const rep=d.reply||"Kuch samajh nahi aaya!"; setVHistory(p=>[...p,{role:"assistant",content:rep}]); setVAiText(rep.slice(0,120)+(rep.length>120?"...":""));setVs("speaking"); await spkP(rep); if(vActiveRef.current){setVAiText("");kListen();} }catch{setVAiText("Error!");setVs("idle");} },[vHistory,model,kListen]);
   const togKittu=()=>{vActiveRef.current?stopAll():(vActiveRef.current=true,kListen());};
@@ -212,7 +239,6 @@ export default function ChatPage(){
         .nav-btn{display:flex;align-items:center;gap:4px;padding:6px 11px;border-radius:8px;background:#2c2c2e;border:1px solid #3a3a3c;font-size:0.74rem;font-weight:500;color:#8e8e93;cursor:pointer;transition:all 0.15s;font-family:inherit;}
         .nav-btn:hover{background:#38383a;color:#e5e5e5;}
         .nav-btn.on{background:#e5e5e5;color:#1c1c1e;border-color:#e5e5e5;}
-        /* ─── MODEL PICKER — opens UPWARD from input box ─── */
         .picker-wrap{position:relative;}
         .picker{position:absolute;bottom:calc(100% + 8px);left:0;z-index:400;min-width:260px;background:#2c2c2e;border:1px solid #3a3a3c;border-radius:14px;overflow:hidden;box-shadow:0 -16px 48px rgba(0,0,0,0.7);animation:fadeIn 0.15s ease;}
         .picker-title{padding:10px 14px 8px;font-size:0.6rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#636366;border-bottom:1px solid #3a3a3c;}
@@ -288,7 +314,7 @@ export default function ChatPage(){
         .inp-model:hover{background:#48484a;border-color:#636366;}
         .inp-dot{width:7px;height:7px;border-radius:50%;background:#30d158;flex-shrink:0;}
         .inp-right{display:flex;align-items:center;gap:5px;}
-        .abt{width:32px;height:32px;border-radius:9px;background:#38383a;border:1px solid #48484a;display:flex;align-items:center;justify-content:center;font-size:14px;color:#8e8e93;transition:all 0.15s;cursor:pointer;border:1px solid #48484a;}
+        .abt{width:32px;height:32px;border-radius:9px;background:#38383a;border:1px solid #48484a;display:flex;align-items:center;justify-content:center;font-size:14px;color:#8e8e93;transition:all 0.15s;cursor:pointer;}
         .abt:hover{background:#48484a;color:#e5e5e5;}
         .abt.on{background:rgba(255,69,58,0.15);border-color:rgba(255,69,58,0.4);color:#ff453a;}
         .send{width:36px;height:36px;border-radius:10px;background:#e5e5e5;color:#1c1c1e;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;cursor:pointer;transition:all 0.18s;border:none;}
@@ -311,7 +337,6 @@ export default function ChatPage(){
 
       <input ref={fileRef} type="file" multiple accept=".pdf,.xlsx,.xls,.csv,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.txt" style={{display:"none"}} onChange={onFI}/>
       {sidebarOpen&&<div className="sidebar-overlay" onClick={()=>setSidebarOpen(false)}/>}
-
       {dragging&&(<div className="drag-ov"><div className="drag-box"><div style={{fontSize:"3rem",marginBottom:12}}>📂</div><div style={{fontSize:"1.1rem",fontWeight:700,color:"#e5e5e5"}}>Drop files here</div><div style={{fontSize:"0.82rem",color:"#636366",marginTop:6}}>PDF, Excel, Word, Images supported</div></div></div>)}
 
       {kittuMode&&(
@@ -367,7 +392,6 @@ export default function ChatPage(){
             <button id="sidebar-toggle" className="nav-toggle" onClick={()=>setSidebarOpen(!sidebarOpen)}>{sidebarOpen?"✕":"☰"}</button>
             <a href="/" className="nav-logo"><div className="nav-logo-dot"/>Universal AI</a>
           </div>
-          {/* Desktop only — hidden on mobile via CSS */}
           <div className="nav-center">
             <button className="nav-pill" onClick={()=>setShowPick(v=>!v)}>
               <div className="nav-dot"/>{cur.i} {cur.p} · {cur.l}
@@ -433,11 +457,9 @@ export default function ChatPage(){
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
             />
             <div className="input-foot">
-              {/* ✅ MODEL SELECTOR — always visible on ALL screen sizes */}
               <div className="picker-wrap" ref={pickRef}>
                 <button className="inp-model" onClick={()=>setShowPick(v=>!v)}>
-                  <div className="inp-dot"/>
-                  {cur.i}&nbsp;{cur.p}
+                  <div className="inp-dot"/>{cur.i}&nbsp;{cur.p}
                   <span style={{fontSize:"0.65rem",color:"#8e8e93",marginLeft:2}}>▾</span>
                 </button>
                 {showPick&&(
